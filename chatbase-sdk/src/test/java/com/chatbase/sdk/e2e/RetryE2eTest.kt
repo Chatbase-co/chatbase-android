@@ -21,7 +21,7 @@ class RetryE2eTest : BaseE2eTest() {
             messageId = messageId
         )
         assertNotNull(retryResponse.id)
-        assertNotNull(retryResponse.parts)
+        assertTrue("Should have at least one part", retryResponse.parts.isNotEmpty())
     }
 
     @Test

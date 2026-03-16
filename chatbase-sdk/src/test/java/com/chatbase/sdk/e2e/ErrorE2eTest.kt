@@ -10,7 +10,10 @@ class ErrorE2eTest : BaseE2eTest() {
 
     @Test
     fun testInvalidApiKey() = runBlocking {
-        val badClient = Chatbase.client("invalid-api-key-12345")
+        val badClient = Chatbase.client {
+            this.apiKey = "invalid-api-key-12345"
+            this.baseUrl = BaseE2eTest.baseUrl
+        }
         try {
             badClient.generateResult(agentId = agentId, message = "Hello")
             fail("Should have thrown ApiException")

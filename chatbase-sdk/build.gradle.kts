@@ -73,6 +73,7 @@ tasks.register<Test>("e2eTest") {
     filter { includeTestsMatching("com.chatbase.sdk.e2e.*") }
     environment("CHATBASE_API_KEY", System.getenv("CHATBASE_API_KEY") ?: "")
     environment("CHATBASE_AGENT_ID", System.getenv("CHATBASE_AGENT_ID") ?: "")
+    environment("CHATBASE_BASE_URL", System.getenv("CHATBASE_BASE_URL") ?: "")
 }
 
 tasks.test {

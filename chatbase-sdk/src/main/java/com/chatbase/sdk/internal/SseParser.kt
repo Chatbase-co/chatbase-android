@@ -55,7 +55,7 @@ internal object SseParser {
                 userMessageId = userMessageId,
                 conversationId = conversationId,
                 userId = userId,
-                finishReason = FinishReason.valueOf(finishReason.uppercase()),
+                finishReason = FinishReason.entries.firstOrNull { it.name.equals(finishReason, ignoreCase = true) } ?: FinishReason.STOP,
                 usage = Usage(credits = credits)
             )
         )

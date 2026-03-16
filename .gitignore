@@ -17,6 +17,7 @@ gradle/wrapper/gradle-wrapper.jar
 
 # Local configuration
 local.properties
+.claude/
 
 # OS
 .DS_Store
