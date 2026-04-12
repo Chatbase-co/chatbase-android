@@ -1,6 +1,6 @@
 plugins {
-    id("java-library")
-    alias(libs.plugins.jetbrains.kotlin.jvm)
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.jetbrains.kotlin.android)
     alias(libs.plugins.kotlinx.serialization)
     alias(libs.plugins.maven.publish)
 }
@@ -8,10 +8,21 @@ plugins {
 group = providers.gradleProperty("GROUP").get()
 version = providers.gradleProperty("VERSION_NAME").get()
 
-java {
-    sourceCompatibility = JavaVersion.VERSION_11
-    targetCompatibility = JavaVersion.VERSION_11
+android {
+    namespace = "com.chatbase.sdk"
+    compileSdk = 35
+
+    defaultConfig {
+        minSdk = 24
+        consumerProguardFiles("consumer-rules.pro")
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
 }
+
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
@@ -26,7 +37,7 @@ mavenPublishing {
 
     pom {
         name.set("Chatbase SDK")
-        description.set("Official Chatbase SDK for JVM and Android")
+        description.set("Official Chatbase SDK for Android")
         url.set("https://github.com/Chatbase-co/chatbase-android")
 
         licenses {
@@ -64,19 +75,9 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
 }
 
-tasks.register<Test>("e2eTest") {
-    description = "Runs E2E tests against the real Chatbase API"
-    group = "verification"
-    useJUnit()
-    testClassesDirs = sourceSets["test"].output.classesDirs
-    classpath = sourceSets["test"].runtimeClasspath
-    filter { includeTestsMatching("com.chatbase.sdk.e2e.*") }
-    environment("CHATBASE_API_KEY", System.getenv("CHATBASE_API_KEY") ?: "")
-    environment("CHATBASE_AGENT_ID", System.getenv("CHATBASE_AGENT_ID") ?: "")
-    environment("CHATBASE_BASE_URL", System.getenv("CHATBASE_BASE_URL") ?: "")
-}
-
-tasks.test {
+// E2E tests are run via: ./gradlew :chatbase-sdk:testDebugUnitTest --tests "com.chatbase.sdk.e2e.*"
+// Unit tests exclude e2e by default
+tasks.withType<Test> {
     filter {
         excludeTestsMatching("com.chatbase.sdk.e2e.*")
         isFailOnNoMatchingTests = false

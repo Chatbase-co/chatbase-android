@@ -7,89 +7,62 @@ import java.io.Closeable
 
 interface ChatbaseClient : Closeable {
 
-    suspend fun health(): HealthResponse
+    // Identity
+    val deviceId: String
+    val isIdentified: Boolean
+    val currentUserId: String?
+    suspend fun identify(token: String)
+    fun logout()
 
-    suspend fun generateResult(
-        agentId: String,
+    // Conversation state
+    val currentConversationId: String?
+    fun newConversation()
+
+    // Chat - DSL style (handles tool loop automatically)
+    suspend fun sendMessage(
         message: String,
         conversationId: String? = null,
-        userId: String? = null
+        callbacks: StreamCallbacks.() -> Unit = {}
     ): ChatResponse
 
-    suspend fun generateText(
-        agentId: String,
+    // Chat - Flow style (raw events, no tool loop)
+    fun sendMessageStream(
         message: String,
-        conversationId: String? = null,
-        userId: String? = null
-    ): String
-
-    fun stream(
-        agentId: String,
-        message: String,
-        conversationId: String? = null,
-        userId: String? = null
+        conversationId: String? = null
     ): Flow<ChatStreamEvent>
 
-    fun streamText(
-        agentId: String,
-        message: String,
-        conversationId: String? = null,
-        userId: String? = null
-    ): Flow<String>
-
-    suspend fun retryResult(
-        agentId: String,
+    // Retry
+    suspend fun retry(
         conversationId: String,
-        messageId: String
+        messageId: String,
+        callbacks: StreamCallbacks.() -> Unit = {}
     ): ChatResponse
-
-    suspend fun retryText(
-        agentId: String,
-        conversationId: String,
-        messageId: String
-    ): String
 
     fun retryStream(
-        agentId: String,
         conversationId: String,
         messageId: String
     ): Flow<ChatStreamEvent>
 
-    fun retryStreamText(
-        agentId: String,
-        conversationId: String,
-        messageId: String
-    ): Flow<String>
-
+    // Conversations
     suspend fun listConversations(
-        agentId: String,
         cursor: String? = null,
         limit: Int? = null
     ): Page<Conversation>
 
-    suspend fun getConversation(
-        agentId: String,
-        conversationId: String
-    ): Conversation
-
+    // Messages
     suspend fun listMessages(
-        agentId: String,
         conversationId: String,
         cursor: String? = null,
         limit: Int? = null
     ): Page<Message>
 
-    suspend fun listUserConversations(
-        agentId: String,
-        userId: String,
-        cursor: String? = null,
-        limit: Int? = null
-    ): Page<Conversation>
+    // Verify
+    suspend fun verify(token: String)
 
-    suspend fun updateFeedback(
-        agentId: String,
-        conversationId: String,
-        messageId: String,
-        feedback: Feedback?
-    ): Message
+    // Client-side tools
+    fun tool(name: String, handler: suspend (input: Map<String, Any?>) -> Any)
+    fun removeTool(name: String)
+
+    // Lifecycle
+    override fun close()
 }

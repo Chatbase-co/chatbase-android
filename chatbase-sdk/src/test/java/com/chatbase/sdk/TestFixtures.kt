@@ -1,13 +1,14 @@
 package com.chatbase.sdk
 
+import com.chatbase.sdk.internal.AnonymousIdProvider
 import com.chatbase.sdk.internal.ChatbaseClientImpl
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 
 object TestFixtures {
 
-    // ── Health ────────────────────────────────────────────────────────
-    val HEALTH_JSON = """{"status":"ok","timestamp":1700000000.0}"""
+    const val TEST_AGENT_ID = "test-agent"
+    const val TEST_DEVICE_ID = "test-device-id-123"
 
     // ── Chat response (text part only) ───────────────────────────────
     val CHAT_RESPONSE_JSON = """{
@@ -18,37 +19,38 @@ object TestFixtures {
             "metadata": {
                 "userMessageId": "umsg-001",
                 "conversationId": "conv-001",
-                "userId": "user-001",
+                "userId": null,
                 "finishReason": "stop",
                 "usage": {"credits": 0.5}
             }
         }
     }"""
 
-    // ── Chat response with tool-call and tool-result parts ───────────
-    val CHAT_TOOL_PARTS_JSON = """{
+    // ── Chat response with tool-call parts ───────────────────────────
+    val CHAT_TOOL_CALL_JSON = """{
         "data": {
             "id": "msg-002",
             "role": "assistant",
             "parts": [
-                {"type": "tool-call", "toolCallId": "tc-1", "toolName": "search", "input": {"query": "test"}},
-                {"type": "tool-result", "toolCallId": "tc-1", "toolName": "search", "output": {"results": []}},
-                {"type": "text", "text": "Based on the search..."}
+                {"type": "tool-call", "toolCallId": "tc-1", "toolName": "search", "input": {"query": "test"}}
             ],
             "metadata": {
                 "userMessageId": "umsg-002",
                 "conversationId": "conv-002",
-                "finishReason": "stop",
+                "finishReason": "tool-calls",
                 "usage": {"credits": 1.0}
             }
         }
     }"""
 
+    // ── Tool result success ──────────────────────────────────────────
+    val TOOL_RESULT_SUCCESS_JSON = """{"data": {"success": true}}"""
+
     // ── Paginated conversations ──────────────────────────────────────
     val PAGINATED_CONVERSATIONS_JSON = """{
         "data": [
-            {"id": "conv-1", "createdAt": 1700000000.0, "updatedAt": 1700000001.0, "status": "active"},
-            {"id": "conv-2", "createdAt": 1700000002.0, "updatedAt": 1700000003.0, "status": "active", "title": "Test"}
+            {"id": "conv-1", "createdAt": 1700000000, "updatedAt": 1700000001, "status": "ongoing"},
+            {"id": "conv-2", "createdAt": 1700000002, "updatedAt": 1700000003, "status": "ongoing", "title": "Test"}
         ],
         "pagination": {"cursor": "cursor-abc", "hasMore": true, "total": 10}
     }"""
@@ -56,7 +58,7 @@ object TestFixtures {
     // ── Paginated conversations (last page) ──────────────────────────
     val PAGINATED_CONVERSATIONS_LAST_PAGE_JSON = """{
         "data": [
-            {"id": "conv-3", "createdAt": 1700000004.0, "updatedAt": 1700000005.0, "status": "active"}
+            {"id": "conv-3", "createdAt": 1700000004, "updatedAt": 1700000005, "status": "archived"}
         ],
         "pagination": {"cursor": null, "hasMore": false, "total": 10}
     }"""
@@ -70,40 +72,8 @@ object TestFixtures {
         "pagination": {"cursor": null, "hasMore": false, "total": 2}
     }"""
 
-    // ── Single conversation with messages ────────────────────────────
-    val SINGLE_CONVERSATION_JSON = """{
-        "data": {
-            "id": "conv-100",
-            "createdAt": 1700000000.0,
-            "updatedAt": 1700000001.0,
-            "status": "active",
-            "userId": "user-42",
-            "title": "Test Conversation",
-            "messages": [
-                {"id": "msg-1", "role": "user", "parts": [{"type": "text", "text": "Hello"}]},
-                {"id": "msg-2", "role": "assistant", "parts": [{"type": "text", "text": "Hi!"}]}
-            ]
-        }
-    }"""
-
-    // ── Message with feedback ────────────────────────────────────────
-    val MESSAGE_WITH_FEEDBACK_JSON = """{
-        "data": {
-            "id": "msg-fb-1",
-            "role": "assistant",
-            "parts": [{"type": "text", "text": "Great answer"}],
-            "feedback": "positive",
-            "metadata": {"score": 0.95}
-        }
-    }"""
-
-    val MESSAGE_NULL_FEEDBACK_JSON = """{
-        "data": {
-            "id": "msg-fb-2",
-            "role": "assistant",
-            "parts": [{"type": "text", "text": "OK answer"}]
-        }
-    }"""
+    // ── Verify response ──────────────────────────────────────────────
+    val VERIFY_RESPONSE_JSON = """{"data": {"userId": "user-42"}}"""
 
     // ── API error ────────────────────────────────────────────────────
     val API_ERROR_JSON = """{
@@ -128,11 +98,22 @@ fun MockWebServer.enqueueJson(body: String, code: Int = 200) {
     )
 }
 
-fun createMockServerClient(server: MockWebServer): ChatbaseClient {
-    val baseUrl = server.url("/api/v2").toString().removeSuffix("/")
+fun MockWebServer.enqueueSse(vararg events: String) {
+    val body = events.joinToString("") { "data: $it\n\n" } + "data: [DONE]\n\n"
+    enqueue(
+        MockResponse()
+            .setResponseCode(200)
+            .setHeader("Content-Type", "text/event-stream")
+            .setBody(body)
+    )
+}
+
+fun createTestClient(server: MockWebServer): ChatbaseClient {
+    val baseUrl = server.url("/api/sdk/agents").toString().removeSuffix("/")
     val config = ChatbaseConfig(
-        apiKey = "test-api-key",
+        agentId = TestFixtures.TEST_AGENT_ID,
         baseUrl = baseUrl
     )
-    return ChatbaseClientImpl(config)
+    val idProvider = AnonymousIdProvider { TestFixtures.TEST_DEVICE_ID }
+    return ChatbaseClientImpl(config, idProvider)
 }

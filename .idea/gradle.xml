@@ -9,7 +9,7 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
-            <option value="$PROJECT_DIR$/sdk" />
+            <option value="$PROJECT_DIR$/chatbase-sdk" />
           </set>
         </option>
       </GradleProjectSettings>

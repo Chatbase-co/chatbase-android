@@ -12,7 +12,7 @@ data class Message(
     val id: String,
     val role: Role,
     val parts: List<Part>,
-    val createdAt: Double? = null,
+    val createdAt: Long? = null,
     val feedback: Feedback? = null,
     val metadata: MessageMetadata? = null
 )

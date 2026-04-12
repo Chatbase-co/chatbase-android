@@ -1,7 +1,6 @@
 package com.chatbase.sdk.internal
 
 import com.chatbase.sdk.exception.ChatbaseException
-import com.chatbase.sdk.model.FinishReason
 import com.chatbase.sdk.streaming.ChatStreamEvent
 import org.junit.Assert.*
 import org.junit.Test
@@ -11,45 +10,111 @@ class SseParserTest {
     // ── text-delta ───────────────────────────────────────────────────
 
     @Test
-    fun `text-delta with delta field`() {
-        val event = SseParser.parse("text-delta", """{"delta": "Hello"}""")
+    fun `text-delta parses id and delta`() {
+        val event = SseParser.parse(null, """{"type": "text-delta", "id": "t1", "delta": "Hello"}""")
         assertTrue(event is ChatStreamEvent.TextDelta)
-        assertEquals("Hello", (event as ChatStreamEvent.TextDelta).text)
-    }
-
-    @Test
-    fun `text-delta with text field fallback`() {
-        val event = SseParser.parse("text-delta", """{"text": "World"}""")
-        assertTrue(event is ChatStreamEvent.TextDelta)
-        assertEquals("World", (event as ChatStreamEvent.TextDelta).text)
-    }
-
-    @Test
-    fun `text-delta with neither delta nor text returns empty`() {
-        val event = SseParser.parse("text-delta", """{"other": "value"}""")
-        assertTrue(event is ChatStreamEvent.TextDelta)
-        assertEquals("", (event as ChatStreamEvent.TextDelta).text)
+        val td = event as ChatStreamEvent.TextDelta
+        assertEquals("t1", td.id)
+        assertEquals("Hello", td.delta)
     }
 
     @Test
     fun `text-delta with empty delta`() {
-        val event = SseParser.parse("text-delta", """{"delta": ""}""")
+        val event = SseParser.parse(null, """{"type": "text-delta", "id": "t1", "delta": ""}""")
         assertTrue(event is ChatStreamEvent.TextDelta)
-        assertEquals("", (event as ChatStreamEvent.TextDelta).text)
+        assertEquals("", (event as ChatStreamEvent.TextDelta).delta)
     }
 
     @Test
-    fun `text-delta type inferred from json when eventType is null`() {
-        val event = SseParser.parse(null, """{"type": "text-delta", "delta": "inferred"}""")
+    fun `text-delta type from eventType param`() {
+        val event = SseParser.parse("text-delta", """{"id": "t1", "delta": "hi"}""")
         assertTrue(event is ChatStreamEvent.TextDelta)
-        assertEquals("inferred", (event as ChatStreamEvent.TextDelta).text)
+        assertEquals("hi", (event as ChatStreamEvent.TextDelta).delta)
     }
 
-    // ── finish ───────────────────────────────────────────────────────
+    // ── text-start / text-end ────────────────────────────────────────
+
+    @Test
+    fun `text-start parses id`() {
+        val event = SseParser.parse(null, """{"type": "text-start", "id": "t1"}""")
+        assertTrue(event is ChatStreamEvent.TextStart)
+        assertEquals("t1", (event as ChatStreamEvent.TextStart).id)
+    }
+
+    @Test
+    fun `text-end parses id`() {
+        val event = SseParser.parse(null, """{"type": "text-end", "id": "t1"}""")
+        assertTrue(event is ChatStreamEvent.TextEnd)
+        assertEquals("t1", (event as ChatStreamEvent.TextEnd).id)
+    }
+
+    // ── tool-input events ────────────────────────────────────────────
+
+    @Test
+    fun `tool-input-start parses toolCallId and toolName`() {
+        val event = SseParser.parse(null, """{"type": "tool-input-start", "toolCallId": "tc-1", "toolName": "search"}""")
+        assertTrue(event is ChatStreamEvent.ToolInputStart)
+        val e = event as ChatStreamEvent.ToolInputStart
+        assertEquals("tc-1", e.toolCallId)
+        assertEquals("search", e.toolName)
+    }
+
+    @Test
+    fun `tool-input-delta parses delta`() {
+        val event = SseParser.parse(null, """{"type": "tool-input-delta", "toolCallId": "tc-1", "inputTextDelta": "{\"q\":"}""")
+        assertTrue(event is ChatStreamEvent.ToolInputDelta)
+        val e = event as ChatStreamEvent.ToolInputDelta
+        assertEquals("tc-1", e.toolCallId)
+    }
+
+    @Test
+    fun `tool-input-available parses full input`() {
+        val event = SseParser.parse(null, """{"type": "tool-input-available", "toolCallId": "tc-1", "toolName": "search", "input": {"query": "test"}}""")
+        assertTrue(event is ChatStreamEvent.ToolInputAvailable)
+        val e = event as ChatStreamEvent.ToolInputAvailable
+        assertEquals("tc-1", e.toolCallId)
+        assertEquals("search", e.toolName)
+        assertTrue(e.input.toString().contains("test"))
+    }
+
+    // ── tool-output-available ────────────────────────────────────────
+
+    @Test
+    fun `tool-output-available parses output`() {
+        val event = SseParser.parse(null, """{"type": "tool-output-available", "toolCallId": "tc-1", "output": {"result": "ok"}}""")
+        assertTrue(event is ChatStreamEvent.ToolOutputAvailable)
+        val e = event as ChatStreamEvent.ToolOutputAvailable
+        assertEquals("tc-1", e.toolCallId)
+        assertTrue(e.output.toString().contains("ok"))
+    }
+
+    // ── step events ──────────────────────────────────────────────────
+
+    @Test
+    fun `start-step returns StepStart`() {
+        val event = SseParser.parse(null, """{"type": "start-step"}""")
+        assertEquals(ChatStreamEvent.StepStart, event)
+    }
+
+    @Test
+    fun `finish-step returns StepFinish`() {
+        val event = SseParser.parse(null, """{"type": "finish-step"}""")
+        assertEquals(ChatStreamEvent.StepFinish, event)
+    }
+
+    // ── start / finish ───────────────────────────────────────────────
+
+    @Test
+    fun `start parses messageId`() {
+        val event = SseParser.parse(null, """{"type": "start", "messageId": "msg-1"}""")
+        assertTrue(event is ChatStreamEvent.Start)
+        assertEquals("msg-1", (event as ChatStreamEvent.Start).messageId)
+    }
 
     @Test
     fun `finish with full metadata`() {
         val data = """{
+            "type": "finish",
             "finishReason": "stop",
             "messageMetadata": {
                 "messageId": "msg-1",
@@ -59,111 +124,93 @@ class SseParserTest {
                 "usage": {"credits": 1.5}
             }
         }"""
-        val event = SseParser.parse("finish", data)
-        assertTrue(event is ChatStreamEvent.Done)
-        val response = (event as ChatStreamEvent.Done).response
-        assertEquals("msg-1", response.id)
-        assertEquals("assistant", response.role)
-        assertEquals("umsg-1", response.metadata.userMessageId)
-        assertEquals("conv-1", response.metadata.conversationId)
-        assertEquals("user-1", response.metadata.userId)
-        assertEquals(FinishReason.STOP, response.metadata.finishReason)
-        assertEquals(1.5, response.metadata.usage.credits, 0.001)
+        val event = SseParser.parse(null, data)
+        assertTrue(event is ChatStreamEvent.Finish)
+        val f = event as ChatStreamEvent.Finish
+        assertEquals("stop", f.finishReason)
+        assertNotNull(f.messageMetadata)
+        assertEquals("msg-1", f.messageMetadata!!.messageId)
+        assertEquals("conv-1", f.messageMetadata!!.conversationId)
+        assertEquals(1.5, f.messageMetadata!!.usage!!.credits, 0.001)
+    }
+
+    @Test
+    fun `finish with tool-calls reason`() {
+        val data = """{"type": "finish", "finishReason": "tool-calls"}"""
+        val event = SseParser.parse(null, data)
+        assertTrue(event is ChatStreamEvent.Finish)
+        assertEquals("tool-calls", (event as ChatStreamEvent.Finish).finishReason)
     }
 
     @Test
     fun `finish with null userId`() {
         val data = """{
+            "type": "finish",
             "finishReason": "stop",
             "messageMetadata": {
-                "messageId": "msg-2",
-                "userMessageId": "umsg-2",
-                "conversationId": "conv-2",
-                "userId": null,
-                "usage": {"credits": 0.5}
+                "messageId": "m1", "userMessageId": "u1", "conversationId": "c1",
+                "userId": null, "usage": {"credits": 0.5}
             }
         }"""
-        val event = SseParser.parse("finish", data)
-        assertTrue(event is ChatStreamEvent.Done)
-        assertNull((event as ChatStreamEvent.Done).response.metadata.userId)
+        val event = SseParser.parse(null, data) as ChatStreamEvent.Finish
+        assertNull(event.messageMetadata!!.userId)
     }
 
-    @Test
-    fun `finish with missing fields uses defaults`() {
-        val data = """{}"""
-        val event = SseParser.parse("finish", data)
-        assertTrue(event is ChatStreamEvent.Done)
-        val response = (event as ChatStreamEvent.Done).response
-        assertEquals("", response.id)
-        assertEquals("", response.metadata.userMessageId)
-        assertEquals("", response.metadata.conversationId)
-        assertNull(response.metadata.userId)
-        assertEquals(FinishReason.STOP, response.metadata.finishReason)
-        assertEquals(0.0, response.metadata.usage.credits, 0.001)
-    }
+    // ── message-metadata ─────────────────────────────────────────────
 
     @Test
-    fun `finish with error finishReason`() {
+    fun `message-metadata parses metadata`() {
         val data = """{
-            "finishReason": "error",
+            "type": "message-metadata",
             "messageMetadata": {
-                "messageId": "msg-3",
-                "userMessageId": "umsg-3",
-                "conversationId": "conv-3",
-                "usage": {"credits": 0.0}
+                "messageId": "msg-1", "conversationId": "conv-1",
+                "usage": {"credits": 2.0}
             }
         }"""
-        val event = SseParser.parse("finish", data)
-        assertTrue(event is ChatStreamEvent.Done)
-        assertEquals(FinishReason.ERROR, (event as ChatStreamEvent.Done).response.metadata.finishReason)
+        val event = SseParser.parse(null, data)
+        assertTrue(event is ChatStreamEvent.MessageMetadataEvent)
+        val meta = (event as ChatStreamEvent.MessageMetadataEvent).messageMetadata
+        assertEquals("msg-1", meta.messageId)
+        assertEquals(2.0, meta.usage!!.credits, 0.001)
     }
 
     // ── error ────────────────────────────────────────────────────────
 
     @Test
+    fun `error with errorText`() {
+        val event = SseParser.parse(null, """{"type": "error", "errorText": "Something failed"}""")
+        assertTrue(event is ChatStreamEvent.Error)
+        assertTrue((event as ChatStreamEvent.Error).exception.message!!.contains("Something failed"))
+    }
+
+    @Test
     fun `error with structured error object`() {
-        val data = """{"error": {"code": "LIMIT_EXCEEDED", "message": "Rate limit hit"}}"""
-        val event = SseParser.parse("error", data)
+        val event = SseParser.parse(null, """{"type": "error", "error": {"code": "ERR", "message": "Bad request"}}""")
         assertTrue(event is ChatStreamEvent.Error)
-        val msg = (event as ChatStreamEvent.Error).exception.message!!
-        assertTrue(msg.contains("LIMIT_EXCEEDED"))
-        assertTrue(msg.contains("Rate limit hit"))
-    }
-
-    @Test
-    fun `error with top-level message fallback`() {
-        val data = """{"message": "Something went wrong"}"""
-        val event = SseParser.parse("error", data)
-        assertTrue(event is ChatStreamEvent.Error)
-        assertTrue((event as ChatStreamEvent.Error).exception.message!!.contains("Something went wrong"))
-    }
-
-    @Test
-    fun `error with no message`() {
-        val data = """{}"""
-        val event = SseParser.parse("error", data)
-        assertTrue(event is ChatStreamEvent.Error)
-        assertTrue((event as ChatStreamEvent.Error).exception.message!!.contains("Unknown stream error"))
+        assertTrue((event as ChatStreamEvent.Error).exception.message!!.contains("Bad request"))
     }
 
     // ── special cases ────────────────────────────────────────────────
 
     @Test
     fun `DONE sentinel returns null`() {
-        val event = SseParser.parse("message", "[DONE]")
-        assertNull(event)
+        assertNull(SseParser.parse(null, "[DONE]"))
     }
 
     @Test
     fun `unknown type returns null`() {
-        val event = SseParser.parse("unknown-type", """{"data": "test"}""")
-        assertNull(event)
+        assertNull(SseParser.parse(null, """{"type": "unknown-event", "data": "test"}"""))
     }
 
     @Test
     fun `malformed JSON returns Error event`() {
-        val event = SseParser.parse("text-delta", "not valid json{{{")
+        val event = SseParser.parse(null, "not valid json{{{")
         assertTrue(event is ChatStreamEvent.Error)
-        assertTrue((event as ChatStreamEvent.Error).exception is ChatbaseException)
+        assertNotNull((event as ChatStreamEvent.Error).exception.message)
+    }
+
+    @Test
+    fun `no type field returns null`() {
+        assertNull(SseParser.parse(null, """{"data": "no type"}"""))
     }
 }

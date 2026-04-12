@@ -1,17 +1,22 @@
 package com.chatbase.sdk
 
+import android.content.Context
+import com.chatbase.sdk.internal.AndroidIdProvider
 import com.chatbase.sdk.internal.ChatbaseClientImpl
 
 object Chatbase {
 
-    fun client(apiKey: String): ChatbaseClient {
-        return client {
-            this.apiKey = apiKey
+    @JvmStatic
+    fun create(context: Context, agentId: String): ChatbaseClient {
+        return create(context) {
+            this.agentId = agentId
         }
     }
 
-    fun client(block: ChatbaseConfig.Builder.() -> Unit): ChatbaseClient {
+    @JvmStatic
+    fun create(context: Context, block: ChatbaseConfig.Builder.() -> Unit): ChatbaseClient {
         val config = ChatbaseConfig.Builder().apply(block).build()
-        return ChatbaseClientImpl(config)
+        val idProvider = AndroidIdProvider(context)
+        return ChatbaseClientImpl(config, idProvider)
     }
 }

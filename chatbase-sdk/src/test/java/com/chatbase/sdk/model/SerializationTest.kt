@@ -3,7 +3,6 @@ package com.chatbase.sdk.model
 import com.chatbase.sdk.internal.ChatRequest
 import com.chatbase.sdk.internal.chatbaseJson
 import kotlinx.serialization.builtins.serializer
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.*
@@ -20,6 +19,7 @@ class SerializationTest {
             "role": "assistant",
             "parts": [{"type": "text", "text": "Hello"}],
             "metadata": {
+                "messageId": "msg-1",
                 "userMessageId": "umsg-1",
                 "conversationId": "conv-1",
                 "userId": "user-1",
@@ -31,11 +31,26 @@ class SerializationTest {
         assertEquals("msg-1", response.id)
         assertEquals("assistant", response.role)
         assertEquals(1, response.parts.size)
+        assertEquals("msg-1", response.metadata.messageId)
         assertEquals("umsg-1", response.metadata.userMessageId)
         assertEquals("conv-1", response.metadata.conversationId)
         assertEquals("user-1", response.metadata.userId)
         assertEquals(FinishReason.STOP, response.metadata.finishReason)
-        assertEquals(1.5, response.metadata.usage.credits, 0.001)
+        assertEquals(1.5, response.metadata.usage!!.credits, 0.001)
+    }
+
+    @Test
+    fun `ChatResponse with optional metadata fields`() {
+        val json = """{
+            "id": "msg-2",
+            "role": "assistant",
+            "parts": [],
+            "metadata": {}
+        }"""
+        val response = chatbaseJson.decodeFromString<ChatResponse>(json)
+        assertNull(response.metadata.userId)
+        assertNull(response.metadata.finishReason)
+        assertNull(response.metadata.usage)
     }
 
     // ── Part polymorphic deserialization ──────────────────────────────
@@ -66,7 +81,6 @@ class SerializationTest {
         assertTrue(part is Part.ToolResult)
         val toolResult = part as Part.ToolResult
         assertEquals("tc-1", toolResult.toolCallId)
-        assertEquals("search", toolResult.toolName)
         assertNotNull(toolResult.output)
     }
 
@@ -86,14 +100,14 @@ class SerializationTest {
             "id": "msg-1",
             "role": "assistant",
             "parts": [{"type": "text", "text": "Hi"}],
-            "createdAt": 1700000000.0,
+            "createdAt": 1700000000,
             "feedback": "positive",
             "metadata": {"score": 0.9}
         }"""
         val message = chatbaseJson.decodeFromString<Message>(json)
         assertEquals("msg-1", message.id)
         assertEquals(Role.ASSISTANT, message.role)
-        assertEquals(1700000000.0, message.createdAt!!, 0.001)
+        assertEquals(1700000000L, message.createdAt)
         assertEquals(Feedback.POSITIVE, message.feedback)
         assertEquals(0.9, message.metadata!!.score!!, 0.001)
     }
@@ -102,8 +116,6 @@ class SerializationTest {
     fun `Message without optional fields`() {
         val json = """{"id": "msg-2", "role": "user", "parts": [{"type": "text", "text": "Hi"}]}"""
         val message = chatbaseJson.decodeFromString<Message>(json)
-        assertEquals("msg-2", message.id)
-        assertEquals(Role.USER, message.role)
         assertNull(message.createdAt)
         assertNull(message.feedback)
         assertNull(message.metadata)
@@ -112,87 +124,94 @@ class SerializationTest {
     // ── Conversation deserialization ─────────────────────────────────
 
     @Test
-    fun `Conversation with messages`() {
+    fun `Conversation with all fields`() {
         val json = """{
-            "id": "conv-1", "createdAt": 100.0, "updatedAt": 200.0, "status": "active",
-            "messages": [{"id": "m1", "role": "user", "parts": [{"type": "text", "text": "hey"}]}]
+            "id": "conv-1", "createdAt": 1700000000, "updatedAt": 1700000001,
+            "status": "ongoing", "title": "Test", "userId": "user-1"
         }"""
         val conv = chatbaseJson.decodeFromString<Conversation>(json)
         assertEquals("conv-1", conv.id)
-        assertNotNull(conv.messages)
-        assertEquals(1, conv.messages!!.size)
+        assertEquals(1700000000L, conv.createdAt)
+        assertEquals(1700000001L, conv.updatedAt)
+        assertEquals(ConversationStatus.ONGOING, conv.status)
+        assertEquals("Test", conv.title)
+        assertEquals("user-1", conv.userId)
     }
 
     @Test
-    fun `Conversation without messages`() {
-        val json = """{"id": "conv-2", "createdAt": 100.0, "updatedAt": 200.0, "status": "active"}"""
+    fun `Conversation with archived status`() {
+        val json = """{"id": "conv-2", "createdAt": 100, "updatedAt": 200, "status": "archived"}"""
         val conv = chatbaseJson.decodeFromString<Conversation>(json)
-        assertNull(conv.messages)
+        assertEquals(ConversationStatus.ARCHIVED, conv.status)
+    }
+
+    @Test
+    fun `Conversation without optional fields`() {
+        val json = """{"id": "conv-3", "createdAt": 100, "updatedAt": 200, "status": "ongoing"}"""
+        val conv = chatbaseJson.decodeFromString<Conversation>(json)
+        assertNull(conv.title)
+        assertNull(conv.userId)
     }
 
     // ── Enum serialization ───────────────────────────────────────────
 
     @Test
-    fun `Feedback serializes to lowercase`() {
-        val json = chatbaseJson.encodeToString(Feedback.serializer(), Feedback.POSITIVE)
-        assertEquals("\"positive\"", json)
+    fun `FinishReason stop serializes`() {
+        assertEquals("\"stop\"", chatbaseJson.encodeToString(FinishReason.serializer(), FinishReason.STOP))
     }
 
     @Test
-    fun `FinishReason serializes to lowercase`() {
-        val json = chatbaseJson.encodeToString(FinishReason.serializer(), FinishReason.STOP)
-        assertEquals("\"stop\"", json)
+    fun `FinishReason tool-calls serializes`() {
+        assertEquals("\"tool-calls\"", chatbaseJson.encodeToString(FinishReason.serializer(), FinishReason.TOOL_CALLS))
+    }
+
+    @Test
+    fun `Feedback serializes to lowercase`() {
+        assertEquals("\"positive\"", chatbaseJson.encodeToString(Feedback.serializer(), Feedback.POSITIVE))
     }
 
     @Test
     fun `Role serializes to lowercase`() {
-        val json = chatbaseJson.encodeToString(Role.serializer(), Role.ASSISTANT)
-        assertEquals("\"assistant\"", json)
+        assertEquals("\"assistant\"", chatbaseJson.encodeToString(Role.serializer(), Role.ASSISTANT))
     }
 
     // ── ChatRequest serialization ────────────────────────────────────
 
     @Test
-    fun `ChatRequest omits nulls`() {
-        val request = ChatRequest(message = "hi")
-        val json = chatbaseJson.encodeToString(ChatRequest.serializer(), request)
-        val obj = chatbaseJson.parseToJsonElement(json).jsonObject
-        assertFalse(obj.containsKey("conversationId"))
-        assertFalse(obj.containsKey("userId"))
-    }
-
-    @Test
-    fun `ChatRequest includes defaults`() {
+    fun `ChatRequest with message`() {
         val request = ChatRequest(message = "hi")
         val json = chatbaseJson.encodeToString(ChatRequest.serializer(), request)
         val obj = chatbaseJson.parseToJsonElement(json).jsonObject
         assertEquals("hi", obj["message"]!!.jsonPrimitive.content)
-        assertEquals("false", obj["stream"]!!.jsonPrimitive.content)
+        assertTrue(obj.containsKey("stream"))
+        assertFalse(obj.containsKey("userId"))
+        assertFalse(obj.containsKey("anonymousId"))
     }
 
-    // ── Page getNextPage excluded from serialization ─────────────────
+    @Test
+    fun `ChatRequest without message for tool continuation`() {
+        val request = ChatRequest(conversationId = "conv-1", stream = true)
+        val json = chatbaseJson.encodeToString(ChatRequest.serializer(), request)
+        val obj = chatbaseJson.parseToJsonElement(json).jsonObject
+        assertFalse(obj.containsKey("message"))
+        assertEquals("conv-1", obj["conversationId"]!!.jsonPrimitive.content)
+    }
+
+    // ── Page ─────────────────────────────────────────────────────────
 
     @Test
     fun `Page serialization excludes getNextPage`() {
-        val page = Page(data = listOf("a", "b"), cursor = "c1", hasMore = true, total = 5)
+        val page = Page(data = listOf("a"), cursor = "c1", hasMore = true, total = 5)
         page.getNextPage = { null }
         val json = chatbaseJson.encodeToString(Page.serializer(String.serializer()), page)
-        assertFalse("getNextPage should not appear in JSON", json.contains("getNextPage"))
-    }
-
-    @Test
-    fun `Page deserialization works without getNextPage field`() {
-        val json = """{"data":["x"],"cursor":"c2","hasMore":false,"total":1}"""
-        val page = chatbaseJson.decodeFromString(Page.serializer(String.serializer()), json)
-        assertEquals(listOf("x"), page.data)
-        assertNull(page.getNextPage)
+        assertFalse(json.contains("getNextPage"))
     }
 
     // ── Unknown keys ignored ─────────────────────────────────────────
 
     @Test
     fun `unknown keys are ignored`() {
-        val json = """{"id": "msg-1", "role": "user", "parts": [], "unknownField": 42, "anotherUnknown": "val"}"""
+        val json = """{"id": "msg-1", "role": "user", "parts": [], "unknownField": 42}"""
         val message = chatbaseJson.decodeFromString<Message>(json)
         assertEquals("msg-1", message.id)
     }

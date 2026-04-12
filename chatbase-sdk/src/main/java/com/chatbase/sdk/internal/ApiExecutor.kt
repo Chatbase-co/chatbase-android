@@ -11,7 +11,8 @@ import java.io.IOException
 
 internal class ApiExecutor(
     private val httpClient: OkHttpClient,
-    private val baseUrl: String
+    private val baseUrl: String,
+    private val agentId: String
 ) {
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
     private val parsedBaseUrl: HttpUrl = baseUrl.toHttpUrl()
@@ -31,13 +32,6 @@ internal class ApiExecutor(
         return Request.Builder()
             .url(buildUrl(path).build())
             .post(body.toRequestBody(jsonMediaType))
-            .build()
-    }
-
-    fun buildPatchRequest(path: String, body: String): Request {
-        return Request.Builder()
-            .url(buildUrl(path).build())
-            .patch(body.toRequestBody(jsonMediaType))
             .build()
     }
 
@@ -61,8 +55,9 @@ internal class ApiExecutor(
     }
 
     private fun buildUrl(path: String): HttpUrl.Builder {
+        val basePath = parsedBaseUrl.encodedPath.trimEnd('/')
         return parsedBaseUrl.newBuilder()
-            .encodedPath(parsedBaseUrl.encodedPath + path)
+            .encodedPath("$basePath/$agentId$path")
     }
 
     companion object {
@@ -73,7 +68,7 @@ internal class ApiExecutor(
                 val code = error?.get("code")?.jsonPrimitive?.content ?: "UNKNOWN_ERROR"
                 val message = error?.get("message")?.jsonPrimitive?.content ?: "Unknown error"
                 val details = error?.get("details")?.jsonObject?.let { detailsObj ->
-                    detailsObj.entries.associate { (k, v) -> k to v.jsonPrimitive.content }
+                    detailsObj.entries.associate { (k, v) -> k to v.toString().removeSurrounding("\"") }
                 }
                 ApiException(httpStatus, code, message, details)
             } catch (_: Exception) {

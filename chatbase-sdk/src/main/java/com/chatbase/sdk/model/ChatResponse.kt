@@ -8,18 +8,19 @@ data class Usage(
 )
 
 @Serializable
-data class ResponseMetadata(
-    val userMessageId: String,
-    val conversationId: String,
-    val userId: String? = null,
-    val finishReason: FinishReason,
-    val usage: Usage
-)
-
-@Serializable
 data class ChatResponse(
     val id: String,
     val role: String,
     val parts: List<Part>,
     val metadata: ResponseMetadata
+)
+
+@Serializable
+data class ResponseMetadata(
+    val messageId: String? = null,
+    val userMessageId: String? = null,
+    val conversationId: String? = null,
+    val userId: String? = null,
+    val finishReason: FinishReason? = null,
+    val usage: Usage? = null
 )

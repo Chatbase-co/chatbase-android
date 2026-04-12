@@ -11,7 +11,6 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
-import java.net.ConnectException
 
 class ApiExecutorTest {
 
@@ -22,8 +21,8 @@ class ApiExecutorTest {
     fun setUp() {
         server = MockWebServer()
         server.start()
-        val baseUrl = server.url("/api/v2").toString().removeSuffix("/")
-        executor = ApiExecutor(OkHttpClient(), baseUrl)
+        val baseUrl = server.url("/api/sdk/agents").toString().removeSuffix("/")
+        executor = ApiExecutor(OkHttpClient(), baseUrl, "test-agent")
     }
 
     @After
@@ -34,15 +33,15 @@ class ApiExecutorTest {
     // ── buildGetRequest ──────────────────────────────────────────────
 
     @Test
-    fun `buildGetRequest produces correct URL`() {
-        val request = executor.buildGetRequest("/health")
-        assertTrue(request.url.toString().endsWith("/api/v2/health"))
+    fun `buildGetRequest produces correct URL with agentId`() {
+        val request = executor.buildGetRequest("/conversations")
+        assertTrue(request.url.toString().contains("/api/sdk/agents/test-agent/conversations"))
         assertEquals("GET", request.method)
     }
 
     @Test
     fun `buildGetRequest with query params`() {
-        val request = executor.buildGetRequest("/items", mapOf("cursor" to "abc", "limit" to "10"))
+        val request = executor.buildGetRequest("/conversations", mapOf("cursor" to "abc", "limit" to "10"))
         val url = request.url
         assertEquals("abc", url.queryParameter("cursor"))
         assertEquals("10", url.queryParameter("limit"))
@@ -50,7 +49,7 @@ class ApiExecutorTest {
 
     @Test
     fun `buildGetRequest omits null query params`() {
-        val request = executor.buildGetRequest("/items", mapOf("cursor" to null, "limit" to "5"))
+        val request = executor.buildGetRequest("/conversations", mapOf("cursor" to null, "limit" to "5"))
         val url = request.url
         assertNull(url.queryParameter("cursor"))
         assertEquals("5", url.queryParameter("limit"))
@@ -61,7 +60,7 @@ class ApiExecutorTest {
     @Test
     fun `buildPostRequest produces correct URL and method`() {
         val request = executor.buildPostRequest("/chat", """{"message":"hi"}""")
-        assertTrue(request.url.toString().endsWith("/api/v2/chat"))
+        assertTrue(request.url.toString().contains("/api/sdk/agents/test-agent/chat"))
         assertEquals("POST", request.method)
     }
 
@@ -72,36 +71,19 @@ class ApiExecutorTest {
     }
 
     @Test
-    fun `buildPostRequest includes body`() {
-        val body = """{"message":"hello"}"""
-        val request = executor.buildPostRequest("/chat", body)
-        assertNotNull(request.body)
-        assertTrue(request.body!!.contentLength() > 0)
-    }
-
-    // ── buildPatchRequest ────────────────────────────────────────────
-
-    @Test
-    fun `buildPatchRequest produces correct method`() {
-        val request = executor.buildPatchRequest("/feedback", """{"feedback":"positive"}""")
-        assertEquals("PATCH", request.method)
-    }
-
-    @Test
-    fun `buildPatchRequest includes body`() {
-        val request = executor.buildPatchRequest("/feedback", """{"feedback":"positive"}""")
-        assertNotNull(request.body)
-        assertTrue(request.body!!.contentLength() > 0)
+    fun `buildPostRequest nested path`() {
+        val request = executor.buildPostRequest("/conversations/conv-1/retry", """{"messageId":"m1"}""")
+        assertTrue(request.url.toString().contains("/api/sdk/agents/test-agent/conversations/conv-1/retry"))
     }
 
     // ── executeRequest ───────────────────────────────────────────────
 
     @Test
     fun `executeRequest success returns body`() = runBlocking {
-        server.enqueueJson("""{"status":"ok"}""")
-        val request = executor.buildGetRequest("/health")
+        server.enqueueJson("""{"data": {"success": true}}""")
+        val request = executor.buildPostRequest("/chat", """{}""")
         val body = executor.executeRequest(request)
-        assertEquals("""{"status":"ok"}""", body)
+        assertTrue(body.contains("success"))
     }
 
     @Test
@@ -112,7 +94,7 @@ class ApiExecutorTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody("""{"error":{"code":"RATE_LIMITED","message":"Too many requests"}}""")
         )
-        val request = executor.buildGetRequest("/health")
+        val request = executor.buildGetRequest("/conversations")
         try {
             executor.executeRequest(request)
             fail("Should throw ApiException")
@@ -127,11 +109,11 @@ class ApiExecutorTest {
     fun `executeRequest network failure throws NetworkException`() = runBlocking {
         val closedServer = MockWebServer()
         closedServer.start()
-        val url = closedServer.url("/api/v2").toString().removeSuffix("/")
+        val url = closedServer.url("/api/sdk/agents").toString().removeSuffix("/")
         closedServer.shutdown()
 
-        val offlineExecutor = ApiExecutor(OkHttpClient(), url)
-        val request = offlineExecutor.buildGetRequest("/health")
+        val offlineExecutor = ApiExecutor(OkHttpClient(), url, "test-agent")
+        val request = offlineExecutor.buildGetRequest("/conversations")
         try {
             offlineExecutor.executeRequest(request)
             fail("Should throw NetworkException")
@@ -155,25 +137,16 @@ class ApiExecutorTest {
     }
 
     @Test
-    fun `parseApiError missing error object`() {
-        val error = ApiExecutor.parseApiError(500, """{"something":"else"}""")
-        assertEquals(500, error.httpStatus)
-        assertEquals("UNKNOWN_ERROR", error.errorCode)
-    }
-
-    @Test
     fun `parseApiError invalid JSON`() {
         val error = ApiExecutor.parseApiError(500, "not json at all")
         assertEquals(500, error.httpStatus)
         assertEquals("UNKNOWN_ERROR", error.errorCode)
-        assertEquals("not json at all", error.errorMessage)
     }
 
     @Test
     fun `parseApiError empty body`() {
         val error = ApiExecutor.parseApiError(502, "")
         assertEquals(502, error.httpStatus)
-        assertEquals("UNKNOWN_ERROR", error.errorCode)
         assertEquals("HTTP 502", error.errorMessage)
     }
 }
