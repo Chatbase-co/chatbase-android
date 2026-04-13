@@ -1,300 +1,294 @@
-# Chatbase SDK for JVM & Android
+# Chatbase Android SDK
 
-The official Chatbase SDK for Kotlin/JVM and Android. Interact with Chatbase AI agents programmatically — send messages, stream responses, manage conversations, and more.
+The official Android SDK for [Chatbase](https://www.chatbase.co). Build conversational AI experiences with streaming responses, conversation history, client-side tool execution, and user identity management.
 
-## Features
-
-- Non-streaming and streaming chat (`generateResult`, `generateText`, `stream`, `streamText`)
-- Conversation management — list, retrieve, and continue conversations
-- User-scoped conversations via `userId`
-- Message retry with full and text-only variants
-- Message feedback (`positive` / `negative`)
-- Cursor-based pagination with `getNextPage` helper
-- Structured responses with typed `Part` objects (text, tool-call, tool-result)
-- Kotlin coroutines and `Flow`-based streaming
-- Configurable timeouts and base URL
-
-## Requirements
-
-- Java 11+
-- Kotlin Coroutines
+> See the [demo app](https://github.com/nichochar/android-demo) for a full working example built with Jetpack Compose.
 
 ## Installation
 
-### Gradle (Kotlin DSL)
-
 ```kotlin
 dependencies {
-    implementation("com.chatbase:chatbase-sdk:0.1.0")
+    implementation("com.chatbase:chatbase-sdk:0.0.1-alpha01")
 }
 ```
 
-### Gradle (Groovy)
+## Getting Started
 
-```groovy
-dependencies {
-    implementation 'com.chatbase:chatbase-sdk:0.1.0'
+### Create a client
+
+The simplest way to get started — just pass your agent ID:
+
+```kotlin
+val client = Chatbase.create(context, "your-agent-id")
+```
+
+Or configure timeouts and a custom base URL:
+
+```kotlin
+val client = Chatbase.create(context) {
+    agentId = "your-agent-id"
+    baseUrl = "https://www.chatbase.co/api/sdk/agents"  // default
+    connectTimeoutMs = 10_000                            // default
+    readTimeoutMs = 30_000                               // default
 }
 ```
 
-### Maven
-
-```xml
-<dependency>
-    <groupId>com.chatbase</groupId>
-    <artifactId>chatbase-sdk</artifactId>
-    <version>0.1.0</version>
-</dependency>
-```
-
-## Quick Start
+When you're done, release resources:
 
 ```kotlin
-import com.chatbase.sdk.Chatbase
-
-val client = Chatbase.client("your-api-key")
-
-// Generate a text response
-val text = client.generateText(
-    agentId = "your-agent-id",
-    message = "Hello!"
-)
-println(text)
-
 client.close()
 ```
 
-## Chat
+### Send a message
 
-### Generate a full result
-
-```kotlin
-val response = client.generateResult(
-    agentId = "your-agent-id",
-    message = "What is Chatbase?"
-)
-
-println(response.id)
-println(response.metadata.conversationId)
-println(response.metadata.finishReason) // STOP or ERROR
-response.parts.filterIsInstance<Part.Text>().forEach { println(it.text) }
-```
-
-### Generate text only
+`sendMessage` streams the response and handles the tool-call loop automatically. Use callbacks to react in real time:
 
 ```kotlin
-val text = client.generateText(
-    agentId = "your-agent-id",
-    message = "What is Chatbase?"
-)
-println(text)
-```
-
-### Stream events
-
-```kotlin
-client.stream(
-    agentId = "your-agent-id",
-    message = "Tell me about Chatbase"
-).collect { event ->
-    when (event) {
-        is ChatStreamEvent.TextDelta -> print(event.text)
-        is ChatStreamEvent.Metadata -> println("\nConversation: ${event.metadata.conversationId}")
-        is ChatStreamEvent.Done -> println("\nDone: ${event.response.id}")
-        is ChatStreamEvent.Error -> System.err.println("Error: ${event.exception.message}")
-    }
+val response = client.sendMessage("Hello!") {
+    onTextDelta { delta -> print(delta) }
+    onFinish { response -> println("\nDone: ${response.id}") }
+    onError { error -> println("Error: ${error.message}") }
 }
 ```
-
-### Stream text only
-
-```kotlin
-client.streamText(
-    agentId = "your-agent-id",
-    message = "Tell me about Chatbase"
-).collect { chunk ->
-    print(chunk)
-}
-```
-
-## Conversations
 
 ### Continue a conversation
 
+Every response includes a `conversationId`. Pass it back to continue the thread:
+
 ```kotlin
-val first = client.generateResult(agentId = agentId, message = "My name is Alice.")
+val first = client.sendMessage("My name is Alice.")
 val conversationId = first.metadata.conversationId
 
-val second = client.generateResult(
-    agentId = agentId,
+val second = client.sendMessage(
     message = "What is my name?",
     conversationId = conversationId
 )
 ```
 
-### List conversations
+Or call `newConversation()` to start fresh:
 
 ```kotlin
-val page = client.listConversations(agentId = agentId, limit = 10)
-page.data.forEach { println("${it.id} — ${it.title}") }
+client.newConversation()
 ```
 
-### Pagination
+## Client-Side Tools
+
+Register tools that run locally when the agent invokes them. The SDK calls your handler, sends the result back to the agent, and continues streaming — all within a single `sendMessage` call.
 
 ```kotlin
-var page = client.listConversations(agentId = agentId, limit = 10)
-while (true) {
-    page.data.forEach { println(it.id) }
-    page = page.getNextPage?.invoke() ?: break
+client.tool("get_spell_damage") { input ->
+    val spell = input["spell"] as String
+    val damage = (5000..10000).random()
+    mapOf("spell" to spell, "damage" to damage)
 }
 ```
 
-### Get a conversation
+Tool handlers are `suspend` functions, so they can show UI and wait for user input:
 
 ```kotlin
-val conversation = client.getConversation(agentId = agentId, conversationId = "conv-id")
+client.tool("get_spell_damage") { _ ->
+    // Suspend until the user picks a spell from a dialog
+    val deferred = CompletableDeferred<String>()
+    spellPickerRequest.value = deferred
+    val spell = deferred.await()
+
+    val damage = (5000..10000).random()
+    mapOf("spell" to spell, "damage" to damage)
+}
 ```
 
-### List messages in a conversation
+Track tool execution via callbacks:
 
 ```kotlin
-val messages = client.listMessages(agentId = agentId, conversationId = "conv-id")
-messages.data.forEach { println("${it.role}: ${it.parts}") }
+client.sendMessage("Cast a spell!") {
+    onToolCall { tool -> println("Calling ${tool.toolName}") }
+    onToolResult { result -> println("Got: ${result.outputAsString()}") }
+}
 ```
 
-### List conversations by user
+## Reactive State Holders
+
+For Jetpack Compose apps, the SDK provides state holders that manage messages, loading, pagination, and errors as `StateFlow` — ready to collect in your UI.
+
+### ConversationState
+
+Manages a single conversation. Handles sending, streaming, history loading, and retry:
 
 ```kotlin
-val userConversations = client.listUserConversations(
-    agentId = agentId,
-    userId = "user-123"
-)
+class ChatViewModel(
+    client: ChatbaseClient,
+    initialConversationId: String?
+) : ViewModel() {
+
+    private val conversation = ConversationState(client)
+    val state: StateFlow<ConversationState.State> = conversation.state
+
+    init {
+        if (initialConversationId != null) {
+            viewModelScope.launch {
+                conversation.loadHistory(initialConversationId, limit = 20)
+            }
+        }
+    }
+
+    fun sendMessage(text: String) {
+        viewModelScope.launch { conversation.sendMessage(text) }
+    }
+
+    fun retryMessage(messageId: String) {
+        viewModelScope.launch { conversation.retry(messageId) }
+    }
+
+    fun loadMoreHistory() {
+        viewModelScope.launch { conversation.loadMoreHistory() }
+    }
+
+    override fun onCleared() { conversation.close() }
+}
+```
+
+In your Composable:
+
+```kotlin
+val state by viewModel.state.collectAsStateWithLifecycle()
+
+// state.messages        — List<UiMessage>, display-ready
+// state.isSending       — true while a message is in flight
+// state.isLoadingHistory
+// state.hasMoreHistory
+// state.conversationId
+// state.error           — ChatbaseException?
+```
+
+Each `UiMessage` has a `content` that is either `UiMessageContent.Text` or `UiMessageContent.ToolCall`, with fields like `isStreaming`, `isError`, and `messageId` for retry.
+
+### ConversationListState
+
+Manages a paginated list of conversations:
+
+```kotlin
+val conversationList = ConversationListState(client)
+
+// Load first page
+viewModelScope.launch { conversationList.load(limit = 20) }
+
+// Load next page
+viewModelScope.launch { conversationList.loadMore() }
+```
+
+```kotlin
+val state by conversationList.state.collectAsStateWithLifecycle()
+
+// state.conversations — List<Conversation>
+// state.isLoading
+// state.hasMore
+// state.error
+```
+
+## User Identity
+
+Identify users with a JWT token to scope conversations to a specific user:
+
+```kotlin
+client.identify(token)
+
+client.isIdentified    // true
+client.currentUserId   // user ID decoded from the token
+client.deviceId        // auto-generated device ID
+```
+
+Clear identity on logout:
+
+```kotlin
+client.logout()
+```
+
+## Low-Level Streaming
+
+If you need raw streaming events instead of the managed state holders, use `sendMessageStream`. Note that tool calls are **not** handled automatically in this mode:
+
+```kotlin
+client.sendMessageStream("Hello").collect { event ->
+    when (event) {
+        is ChatStreamEvent.TextDelta -> print(event.delta)
+        is ChatStreamEvent.ToolInputAvailable -> { /* handle tool call manually */ }
+        is ChatStreamEvent.Finish -> println("\nDone")
+        is ChatStreamEvent.Error -> println("Error: ${event.exception.message}")
+        else -> {}
+    }
+}
 ```
 
 ## Retry
 
-Retry the last assistant message in a conversation:
+Retry a failed assistant message:
 
 ```kotlin
-// Full result
-val result = client.retryResult(agentId, conversationId, messageId)
+// By IDs
+val retried = client.retry(conversationId, messageId) {
+    onTextDelta { delta -> print(delta) }
+}
 
-// Text only
-val text = client.retryText(agentId, conversationId, messageId)
+// From a response object
+val retried = client.retry(response)
 
-// Stream events
-client.retryStream(agentId, conversationId, messageId).collect { event -> ... }
-
-// Stream text
-client.retryStreamText(agentId, conversationId, messageId).collect { chunk -> print(chunk) }
+// Via ConversationState (removes the failed message and re-streams)
+conversation.retry(messageId)
 ```
 
-## Feedback
+## Conversations & History
 
-Submit feedback on a message:
-
-```kotlin
-import com.chatbase.sdk.model.Feedback
-
-// Add positive feedback
-client.updateFeedback(agentId, conversationId, messageId, Feedback.POSITIVE)
-
-// Add negative feedback
-client.updateFeedback(agentId, conversationId, messageId, Feedback.NEGATIVE)
-
-// Remove feedback
-client.updateFeedback(agentId, conversationId, messageId, null)
-```
-
-## Configuration
+Access conversations and messages directly when not using the state holders:
 
 ```kotlin
-val client = Chatbase.client {
-    apiKey = "your-api-key"                           // required
-    baseUrl = "https://www.chatbase.co/api/v2"        // default
-    connectTimeoutMs = 10_000                         // default: 10 seconds
-    readTimeoutMs = 30_000                            // default: 30 seconds
+// List conversations
+val page = client.listConversations(limit = 20)
+page.data.forEach { println("${it.id} — ${it.title}") }
+
+// Paginate
+if (page.canLoadMore) {
+    val nextPage = page.loadMore()
+}
+
+// List messages in a conversation
+val messages = client.listMessages(conversationId, limit = 50)
+messages.data.forEach { msg ->
+    println("${msg.role}: ${msg.parts}")
 }
 ```
-
-## Models
-
-### ChatResponse
-
-| Field      | Type               | Description                        |
-|------------|--------------------|------------------------------------|
-| `id`       | `String`           | Response message ID                |
-| `role`     | `String`           | Always `"assistant"`               |
-| `parts`    | `List<Part>`       | Response content parts             |
-| `metadata` | `ResponseMetadata` | Conversation ID, usage, finish reason |
-
-### Part (sealed interface)
-
-| Variant        | Fields                                    |
-|----------------|-------------------------------------------|
-| `Part.Text`    | `text: String`                            |
-| `Part.ToolCall`| `toolCallId`, `toolName`, `input`         |
-| `Part.ToolResult`| `toolCallId`, `toolName`, `output`      |
-
-### ChatStreamEvent (sealed interface)
-
-| Variant     | Fields                          |
-|-------------|---------------------------------|
-| `TextDelta` | `text: String`                  |
-| `Metadata`  | `metadata: ResponseMetadata`    |
-| `Done`      | `response: ChatResponse`        |
-| `Error`     | `exception: ChatbaseException`  |
-
-### Page\<T\>
-
-| Field        | Type                           | Description             |
-|--------------|--------------------------------|-------------------------|
-| `data`       | `List<T>`                      | Items in the page       |
-| `cursor`     | `String?`                      | Cursor for next page    |
-| `hasMore`    | `Boolean`                      | Whether more pages exist|
-| `total`      | `Int`                          | Total number of items   |
-| `getNextPage`| `(suspend () -> Page<T>?)?`    | Fetch next page helper  |
-
-### Enums
-
-- **`Role`**: `USER`, `ASSISTANT`
-- **`FinishReason`**: `STOP`, `ERROR`
-- **`Feedback`**: `POSITIVE`, `NEGATIVE`
 
 ## Error Handling
 
 All SDK exceptions extend `ChatbaseException`:
 
-- **`ApiException`** — HTTP error from the API
-  - `httpStatus: Int`
-  - `errorCode: String`
-  - `errorMessage: String`
-  - `isRateLimited`, `isAuthError`, `isNotFound`, `isCreditsExhausted`
-- **`NetworkException`** — connectivity / timeout errors
-
-### Non-streaming
+- **`ApiException`** — HTTP errors (`httpStatus`, `errorCode`, `isRateLimited`, `isNotFound`, `isCreditsExhausted`)
+- **`NetworkException`** — connectivity and timeout errors
 
 ```kotlin
 try {
-    val text = client.generateText(agentId, "Hello")
+    client.sendMessage("Hello")
 } catch (e: ApiException) {
-    if (e.isRateLimited) { /* back off */ }
+    when {
+        e.isRateLimited -> { /* back off */ }
+        e.isCreditsExhausted -> { /* notify user */ }
+    }
 } catch (e: NetworkException) {
-    // retry or surface to user
+    // retry or show offline state
 }
 ```
 
-### Streaming
+In streaming flows, errors arrive as events:
 
 ```kotlin
-client.stream(agentId, "Hello").collect { event ->
-    when (event) {
-        is ChatStreamEvent.Error -> println("Stream error: ${event.exception.message}")
-        else -> { /* handle normally */ }
+client.sendMessageStream("Hello").collect { event ->
+    if (event is ChatStreamEvent.Error) {
+        println("Stream error: ${event.exception.message}")
     }
 }
 ```
 
-## License
+## Requirements
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+- Android API 24+ (Android 7.0)
+- Java 11+
+- Kotlin Coroutines
