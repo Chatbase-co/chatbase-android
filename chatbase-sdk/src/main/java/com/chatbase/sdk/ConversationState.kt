@@ -74,7 +74,7 @@ class ConversationState(
             historyPage = page
             _state.update {
                 it.copy(
-                    messages = page.data.reversed().toUiMessages(conversationId),
+                    messages = page.data.toUiMessages(conversationId),
                     isLoadingHistory = false,
                     hasMoreHistory = page.canLoadMore
                 )
@@ -102,9 +102,12 @@ class ConversationState(
             val updated = page.loadMore() ?: return
             historyPage = updated
             _state.update {
+                val historyIds = updated.data.mapTo(mutableSetOf()) { msg -> msg.id }
+                val localMessages = it.messages.filter { msg ->
+                    msg.messageId == null || msg.messageId !in historyIds
+                }
                 it.copy(
-                    messages = updated.data.reversed().toUiMessages(conversationId) +
-                            it.messages.filter { msg -> msg.messageId == null },
+                    messages = updated.data.toUiMessages(conversationId) + localMessages,
                     isLoadingHistory = false,
                     hasMoreHistory = updated.canLoadMore
                 )

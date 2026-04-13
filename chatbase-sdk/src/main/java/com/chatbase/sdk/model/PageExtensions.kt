@@ -4,17 +4,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
 /**
- * Returns a copy of this page with messages in chronological order (oldest first).
- *
- * The SDK's [com.chatbase.sdk.ChatbaseClient.listMessages] returns messages
- * newest-first. This extension reverses them for display in a chat UI.
- */
-fun Page<Message>.chronological(): Page<Message> =
-    Page(data = data.reversed(), cursor = cursor, hasMore = hasMore, total = total).also {
-        it.getNextPage = getNextPage
-    }
-
-/**
  * Converts a list of SDK [Message] objects into display-ready [UiMessage] items.
  *
  * Each [Part] in a message becomes a separate [UiMessage]:

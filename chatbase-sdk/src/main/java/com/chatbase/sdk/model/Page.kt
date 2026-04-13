@@ -24,7 +24,7 @@ data class Page<T>(
     suspend fun loadMore(): Page<T>? {
         val next = getNextPage?.invoke() ?: return null
         return Page(
-            data = data + next.data,
+            data = next.data + data,
             cursor = next.cursor,
             hasMore = next.hasMore,
             total = next.total

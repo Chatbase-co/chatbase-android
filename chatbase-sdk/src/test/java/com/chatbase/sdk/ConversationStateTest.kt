@@ -83,8 +83,7 @@ class ConversationStateTest {
 
     @Test
     fun `loadHistory populates messages in chronological order`() = runBlocking {
-        // API fixture returns newest-first: msg-1(user), msg-2(assistant)
-        // Reversed for chronological: msg-2(assistant), msg-1(user)
+        // API returns chronological (oldest-first): msg-1(user), msg-2(assistant)
         server.enqueueJson(TestFixtures.PAGINATED_MESSAGES_JSON)
         conversation.loadHistory("conv-1")
 
@@ -94,16 +93,16 @@ class ConversationStateTest {
         assertFalse(state.hasMoreHistory)
         assertEquals(2, state.messages.size)
 
-        // Reversed from API order: assistant first, then user
+        // Chronological: user first, then assistant
         val first = state.messages[0]
-        assertEquals(Role.ASSISTANT, first.role)
-        assertEquals("Hello!", (first.content as UiMessageContent.Text).text)
-        assertEquals("msg-2", first.messageId)
+        assertEquals(Role.USER, first.role)
+        assertEquals("Hi", (first.content as UiMessageContent.Text).text)
+        assertEquals("msg-1", first.messageId)
 
         val second = state.messages[1]
-        assertEquals(Role.USER, second.role)
-        assertEquals("Hi", (second.content as UiMessageContent.Text).text)
-        assertEquals("msg-1", second.messageId)
+        assertEquals(Role.ASSISTANT, second.role)
+        assertEquals("Hello!", (second.content as UiMessageContent.Text).text)
+        assertEquals("msg-2", second.messageId)
     }
 
     @Test
@@ -140,6 +139,76 @@ class ConversationStateTest {
         val messageCountBefore = conversation.state.value.messages.size
         conversation.loadMoreHistory()
         assertEquals(messageCountBefore, conversation.state.value.messages.size)
+    }
+
+    @Test
+    fun `loadMoreHistory preserves sent messages after send and paginate`() = runBlocking {
+        // 1. Load initial history (has more pages)
+        server.enqueueJson(INITIAL_HISTORY_WITH_MORE_JSON)
+        conversation.loadHistory("conv-1")
+
+        val stateAfterLoad = conversation.state.value
+        assertEquals(2, stateAfterLoad.messages.size)
+        assertTrue(stateAfterLoad.hasMoreHistory)
+
+        // 2. Send a message — SSE response assigns messageId "msg-001" to assistant
+        server.enqueueSse(
+            SSE_TEXT_START,
+            SSE_TEXT_DELTA_HELLO,
+            SSE_TEXT_END,
+            SSE_MESSAGE_METADATA,
+            SSE_FINISH_STOP
+        )
+        conversation.sendMessage("New question")
+
+        val stateAfterSend = conversation.state.value
+        // History (2) + user msg (1) + assistant response (1) = 4
+        assertEquals(4, stateAfterSend.messages.size)
+        assertFalse(stateAfterSend.isSending)
+
+        // Verify assistant response is present and has a messageId
+        val assistantResponse = stateAfterSend.messages.last { it.role == Role.ASSISTANT }
+        assertEquals("Hello", (assistantResponse.content as UiMessageContent.Text).text)
+        assertEquals("msg-001", assistantResponse.messageId)
+
+        // 3. Load more history (older page)
+        server.enqueueJson(OLDER_HISTORY_PAGE_JSON)
+        conversation.loadMoreHistory()
+
+        val finalState = conversation.state.value
+        assertFalse(finalState.isLoadingHistory)
+        assertFalse(finalState.hasMoreHistory)
+
+        // All 6 messages should be present in chronological order:
+        // older history (2) + recent history (2) + user msg (1) + assistant response (1)
+        assertEquals(6, finalState.messages.size)
+
+        // Older history page
+        assertEquals(Role.USER, finalState.messages[0].role)
+        assertEquals("Hello", (finalState.messages[0].content as UiMessageContent.Text).text)
+        assertEquals("msg-1", finalState.messages[0].messageId)
+
+        assertEquals(Role.ASSISTANT, finalState.messages[1].role)
+        assertEquals("Hi there!", (finalState.messages[1].content as UiMessageContent.Text).text)
+        assertEquals("msg-2", finalState.messages[1].messageId)
+
+        // Recent history page
+        assertEquals(Role.USER, finalState.messages[2].role)
+        assertEquals("Help me", (finalState.messages[2].content as UiMessageContent.Text).text)
+        assertEquals("msg-3", finalState.messages[2].messageId)
+
+        assertEquals(Role.ASSISTANT, finalState.messages[3].role)
+        assertEquals("Sure!", (finalState.messages[3].content as UiMessageContent.Text).text)
+        assertEquals("msg-4", finalState.messages[3].messageId)
+
+        // Sent messages preserved after loadMoreHistory
+        assertEquals(Role.USER, finalState.messages[4].role)
+        assertEquals("New question", (finalState.messages[4].content as UiMessageContent.Text).text)
+        assertNull(finalState.messages[4].messageId)
+
+        assertEquals(Role.ASSISTANT, finalState.messages[5].role)
+        assertEquals("Hello", (finalState.messages[5].content as UiMessageContent.Text).text)
+        assertEquals("msg-001", finalState.messages[5].messageId)
     }
 
     // ── sendMessage ──────────────────────────────────────────────────
@@ -253,21 +322,6 @@ class ConversationStateTest {
         assertFalse(content.isExecuting)
     }
 
-    @Test
-    fun `chronological reverses page data`() {
-        val page = Page(
-            data = listOf(
-                Message(id = "m2", role = Role.ASSISTANT, parts = listOf(Part.Text("second"))),
-                Message(id = "m1", role = Role.USER, parts = listOf(Part.Text("first")))
-            ),
-            hasMore = false,
-            total = 2
-        )
-        val chrono = page.chronological()
-        assertEquals("m1", chrono.data[0].id)
-        assertEquals("m2", chrono.data[1].id)
-    }
-
     // ── SSE fixtures ─────────────────────────────────────────────────
 
     companion object {
@@ -276,6 +330,22 @@ class ConversationStateTest {
                 {"id": "msg-1", "role": "user", "parts": [{"type": "text", "text": "Hi"}]}
             ],
             "pagination": {"cursor": "cursor-xyz", "hasMore": true, "total": 5}
+        }"""
+
+        val INITIAL_HISTORY_WITH_MORE_JSON = """{
+            "data": [
+                {"id": "msg-3", "role": "user", "parts": [{"type": "text", "text": "Help me"}]},
+                {"id": "msg-4", "role": "assistant", "parts": [{"type": "text", "text": "Sure!"}]}
+            ],
+            "pagination": {"cursor": "cursor-abc", "hasMore": true, "total": 4}
+        }"""
+
+        val OLDER_HISTORY_PAGE_JSON = """{
+            "data": [
+                {"id": "msg-1", "role": "user", "parts": [{"type": "text", "text": "Hello"}]},
+                {"id": "msg-2", "role": "assistant", "parts": [{"type": "text", "text": "Hi there!"}]}
+            ],
+            "pagination": {"cursor": null, "hasMore": false, "total": 4}
         }"""
 
         const val SSE_TEXT_START = """{"type":"text-start","id":"text-0"}"""
