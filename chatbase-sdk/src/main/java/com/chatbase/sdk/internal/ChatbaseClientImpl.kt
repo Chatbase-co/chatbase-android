@@ -259,11 +259,6 @@ internal class ChatbaseClientImpl(
                         throw error
                     }
 
-                    // Fire onToolCall before executing (outside try so callback errors propagate separately)
-                    invokeOnMain(callbacks.onToolCall,
-                        ToolCallInfo(toolCall.toolCallId, toolCall.toolName, toolCall.input ?: JsonNull)
-                    )
-
                     try {
                         val input = toolCall.input?.let { jsonElementToMap(it) } ?: emptyMap()
                         val output = handler(input)
@@ -349,6 +344,9 @@ internal class ChatbaseClientImpl(
                         toolName = event.toolName,
                         input = event.input
                     ))
+                    invokeOnMain(callbacks.onToolCall,
+                        ToolCallInfo(event.toolCallId, event.toolName, event.input)
+                    )
                 }
                 is ChatStreamEvent.Finish -> {
                     finishReason = FinishReason.entries.firstOrNull {
@@ -386,7 +384,13 @@ internal class ChatbaseClientImpl(
                         withContext(Dispatchers.Main) { callbacks.onStart?.invoke() }
                     }
                 }
-                else -> { /* StepStart, StepFinish, ToolInputStart, ToolInputDelta, ToolOutputAvailable */ }
+                is ChatStreamEvent.ToolOutputAvailable -> {
+                    val toolName = toolCalls.firstOrNull { it.toolCallId == event.toolCallId }?.toolName ?: ""
+                    invokeOnMain(callbacks.onToolResult,
+                        ToolResultInfo(event.toolCallId, toolName, event.output)
+                    )
+                }
+                else -> { /* StepStart, StepFinish, ToolInputStart, ToolInputDelta */ }
             }
         }
 
