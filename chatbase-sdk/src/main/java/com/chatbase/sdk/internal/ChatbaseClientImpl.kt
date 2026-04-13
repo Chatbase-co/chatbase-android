@@ -26,7 +26,7 @@ internal class ChatbaseClientImpl(
 ) : ChatbaseClient {
 
     private val identityManager = IdentityManager(anonymousIdProvider)
-    private val conversationState = ConversationState()
+    private val conversationState = ConversationIdHolder()
     private val toolRegistry = ToolRegistry()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -40,7 +40,7 @@ internal class ChatbaseClientImpl(
     override val isIdentified: Boolean get() = identityManager.isIdentified
     override val currentUserId: String? get() = identityManager.currentUserId
 
-    override suspend fun identify(token: String) {
+    override suspend fun identify(token: String) = withContext(Dispatchers.IO) {
         verify(token)
     }
 
@@ -137,7 +137,7 @@ internal class ChatbaseClientImpl(
     override suspend fun listConversations(
         cursor: String?,
         limit: Int?
-    ): Page<Conversation> {
+    ): Page<Conversation> = withContext(Dispatchers.IO) {
         val request = api.buildGetRequest(
             "/conversations",
             buildMap {
@@ -150,7 +150,7 @@ internal class ChatbaseClientImpl(
         page.getNextPage = if (page.hasMore && page.cursor != null) {
             { listConversations(cursor = page.cursor, limit = limit) }
         } else null
-        return page
+        page
     }
 
     // -- Messages --
@@ -159,7 +159,7 @@ internal class ChatbaseClientImpl(
         conversationId: String,
         cursor: String?,
         limit: Int?
-    ): Page<Message> {
+    ): Page<Message> = withContext(Dispatchers.IO) {
         val request = api.buildGetRequest(
             "/conversations/$conversationId/messages",
             buildMap {
@@ -172,12 +172,12 @@ internal class ChatbaseClientImpl(
         page.getNextPage = if (page.hasMore && page.cursor != null) {
             { listMessages(conversationId, cursor = page.cursor, limit = limit) }
         } else null
-        return page
+        page
     }
 
     // -- Verify --
 
-    override suspend fun verify(token: String) {
+    override suspend fun verify(token: String) = withContext(Dispatchers.IO) {
         val requestBody = chatbaseJson.encodeToString(
             VerifyRequest.serializer(),
             VerifyRequest(token = token)
@@ -255,12 +255,12 @@ internal class ChatbaseClientImpl(
                     val handler = toolRegistry.get(toolCall.toolName)
                     if (handler == null) {
                         val error = ChatbaseException("No handler registered for tool '${toolCall.toolName}'")
-                        callbacks.onError?.invoke(error)
+                        invokeOnMain(callbacks.onError, error)
                         throw error
                     }
 
                     // Fire onToolCall before executing (outside try so callback errors propagate separately)
-                    callbacks.onToolCall?.invoke(
+                    invokeOnMain(callbacks.onToolCall,
                         ToolCallInfo(toolCall.toolCallId, toolCall.toolName, toolCall.input ?: JsonNull)
                     )
 
@@ -280,15 +280,15 @@ internal class ChatbaseClientImpl(
                         )
                         api.executeRequest(submitRequest)
 
-                        callbacks.onToolResult?.invoke(
+                        invokeOnMain(callbacks.onToolResult,
                             ToolResultInfo(toolCall.toolCallId, toolCall.toolName, output)
                         )
                     } catch (e: ChatbaseException) {
-                        callbacks.onError?.invoke(e)
+                        invokeOnMain(callbacks.onError, e)
                         throw e
                     } catch (e: Exception) {
                         val wrapped = ChatbaseException("Tool '${toolCall.toolName}' failed: ${e.message}", e)
-                        callbacks.onError?.invoke(wrapped)
+                        invokeOnMain(callbacks.onError, wrapped)
                         throw wrapped
                     }
                 }
@@ -296,12 +296,19 @@ internal class ChatbaseClientImpl(
                 currentMessage = null
             } else {
                 // Terminal — return response
-                callbacks.onFinish?.invoke(result)
+                invokeOnMain(callbacks.onFinish, result)
                 return result
             }
         }
 
         throw ChatbaseException("Tool loop exceeded maximum iterations ($MAX_TOOL_LOOP_ITERATIONS)")
+    }
+
+    /** Invoke a callback on [Dispatchers.Main] so consumers can safely update UI state. */
+    private suspend inline fun <T> invokeOnMain(noinline callback: ((T) -> Unit)?, value: T) {
+        if (callback != null) {
+            withContext(Dispatchers.Main) { callback(value) }
+        }
     }
 
     companion object {
@@ -331,7 +338,7 @@ internal class ChatbaseClientImpl(
                 is ChatStreamEvent.TextDelta -> {
                     if (textParts.isEmpty()) textParts.add(StringBuilder())
                     textParts.last().append(event.delta)
-                    callbacks.onTextDelta?.invoke(event.delta)
+                    invokeOnMain(callbacks.onTextDelta, event.delta)
                 }
                 is ChatStreamEvent.TextEnd -> {
                     currentTextId = null
@@ -371,10 +378,15 @@ internal class ChatbaseClientImpl(
                     )
                 }
                 is ChatStreamEvent.Error -> {
-                    callbacks.onError?.invoke(event.exception)
+                    invokeOnMain(callbacks.onError, event.exception)
                     throw event.exception
                 }
-                else -> { /* StepStart, StepFinish, ToolInputStart, ToolInputDelta, ToolOutputAvailable, Start */ }
+                is ChatStreamEvent.Start -> {
+                    if (callbacks.onStart != null) {
+                        withContext(Dispatchers.Main) { callbacks.onStart?.invoke() }
+                    }
+                }
+                else -> { /* StepStart, StepFinish, ToolInputStart, ToolInputDelta, ToolOutputAvailable */ }
             }
         }
 

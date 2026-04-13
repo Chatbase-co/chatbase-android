@@ -66,3 +66,19 @@ interface ChatbaseClient : Closeable {
     // Lifecycle
     override fun close()
 }
+
+/**
+ * Retries the given [response] using its conversation and message IDs.
+ * Convenience wrapper around [ChatbaseClient.retry].
+ */
+suspend fun ChatbaseClient.retry(
+    response: ChatResponse,
+    callbacks: StreamCallbacks.() -> Unit = {}
+): ChatResponse {
+    val conversationId = response.metadata.conversationId
+        ?: throw IllegalArgumentException("ChatResponse has no conversationId — cannot retry")
+    val messageId = response.id.ifBlank {
+        throw IllegalArgumentException("ChatResponse has no message ID — cannot retry")
+    }
+    return retry(conversationId, messageId, callbacks)
+}

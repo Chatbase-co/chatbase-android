@@ -49,7 +49,7 @@ class SerializationTest {
         }"""
         val response = chatbaseJson.decodeFromString<ChatResponse>(json)
         assertNull(response.metadata.userId)
-        assertNull(response.metadata.finishReason)
+        assertEquals(FinishReason.UNKNOWN, response.metadata.finishReason)
         assertNull(response.metadata.usage)
     }
 

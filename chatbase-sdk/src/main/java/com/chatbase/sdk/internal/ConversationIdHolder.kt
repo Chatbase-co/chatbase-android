@@ -2,7 +2,7 @@ package com.chatbase.sdk.internal
 
 import java.util.concurrent.atomic.AtomicReference
 
-internal class ConversationState {
+internal class ConversationIdHolder {
 
     private val currentId = AtomicReference<String?>(null)
 

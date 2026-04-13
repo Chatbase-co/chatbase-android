@@ -13,4 +13,23 @@ data class Page<T>(
     @Transient
     var getNextPage: (suspend () -> Page<T>?)? = null
         internal set
+
+    /** Whether more data can be loaded via [loadMore]. */
+    val canLoadMore: Boolean get() = hasMore && getNextPage != null
+
+    /**
+     * Loads the next page and returns a new [Page] with the combined data.
+     * Returns `null` if there is no next page.
+     */
+    suspend fun loadMore(): Page<T>? {
+        val next = getNextPage?.invoke() ?: return null
+        return Page(
+            data = data + next.data,
+            cursor = next.cursor,
+            hasMore = next.hasMore,
+            total = next.total
+        ).also {
+            it.getNextPage = next.getNextPage
+        }
+    }
 }
