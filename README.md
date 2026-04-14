@@ -2,7 +2,7 @@
 
 The official Android SDK for [Chatbase](https://www.chatbase.co). Build conversational AI experiences with streaming responses, conversation history, client-side tool execution, and user identity management.
 
-> See the [demo app](https://github.com/nichochar/android-demo) for a full working example built with Jetpack Compose.
+> See the [demo app](https://github.com/Chatbase-co/android-demo) for a full working example built with Jetpack Compose.
 
 ## Installation
 
