@@ -58,7 +58,7 @@ object TestFixtures {
     // ── Paginated conversations (last page) ──────────────────────────
     val PAGINATED_CONVERSATIONS_LAST_PAGE_JSON = """{
         "data": [
-            {"id": "conv-3", "createdAt": 1700000004, "updatedAt": 1700000005, "status": "archived"}
+            {"id": "conv-3", "createdAt": 1700000004, "updatedAt": 1700000005, "status": "ended"}
         ],
         "pagination": {"cursor": null, "hasMore": false, "total": 10}
     }"""

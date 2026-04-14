@@ -6,7 +6,8 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class ConversationStatus {
     @SerialName("ongoing") ONGOING,
-    @SerialName("archived") ARCHIVED
+    @SerialName("ended") ENDED,
+    @SerialName("taken_over") TAKEN_OVER
 }
 
 @Serializable

@@ -188,7 +188,7 @@ class ChatbaseClientImplTest {
 
         assertEquals(1, second.data.size)
         assertEquals("conv-3", second.data[0].id)
-        assertEquals(ConversationStatus.ARCHIVED, second.data[0].status)
+        assertEquals(ConversationStatus.ENDED, second.data[0].status)
 
         server.takeRequest()
         val secondReq = server.takeRequest()

@@ -139,10 +139,17 @@ class SerializationTest {
     }
 
     @Test
-    fun `Conversation with archived status`() {
-        val json = """{"id": "conv-2", "createdAt": 100, "updatedAt": 200, "status": "archived"}"""
+    fun `Conversation with ended status`() {
+        val json = """{"id": "conv-2", "createdAt": 100, "updatedAt": 200, "status": "ended"}"""
         val conv = chatbaseJson.decodeFromString<Conversation>(json)
-        assertEquals(ConversationStatus.ARCHIVED, conv.status)
+        assertEquals(ConversationStatus.ENDED, conv.status)
+    }
+
+    @Test
+    fun `Conversation with taken_over status`() {
+        val json = """{"id": "conv-2", "createdAt": 100, "updatedAt": 200, "status": "taken_over"}"""
+        val conv = chatbaseJson.decodeFromString<Conversation>(json)
+        assertEquals(ConversationStatus.TAKEN_OVER, conv.status)
     }
 
     @Test
