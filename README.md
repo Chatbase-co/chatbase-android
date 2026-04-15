@@ -8,7 +8,7 @@ The official Android SDK for [Chatbase](https://www.chatbase.co). Build conversa
 
 ```kotlin
 dependencies {
-    implementation("com.chatbase:chatbase-sdk:0.0.1-alpha02")
+    implementation("com.chatbase:chatbase-sdk:0.0.1-alpha03")
 }
 ```
 
