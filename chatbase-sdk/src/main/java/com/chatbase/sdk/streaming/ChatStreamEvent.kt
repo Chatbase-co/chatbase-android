@@ -7,7 +7,6 @@ data class StreamMessageMetadata(
     val messageId: String? = null,
     val userMessageId: String? = null,
     val conversationId: String? = null,
-    val userId: String? = null,
     val usage: StreamUsage? = null
 )
 

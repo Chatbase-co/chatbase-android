@@ -20,7 +20,6 @@ data class ResponseMetadata(
     val messageId: String? = null,
     val userMessageId: String? = null,
     val conversationId: String? = null,
-    val userId: String? = null,
     val finishReason: FinishReason = FinishReason.UNKNOWN,
     val usage: Usage? = null
 )

@@ -120,7 +120,6 @@ class SseParserTest {
                 "messageId": "msg-1",
                 "userMessageId": "umsg-1",
                 "conversationId": "conv-1",
-                "userId": "user-1",
                 "usage": {"credits": 1.5}
             }
         }"""
@@ -140,20 +139,6 @@ class SseParserTest {
         val event = SseParser.parse(null, data)
         assertTrue(event is ChatStreamEvent.Finish)
         assertEquals("tool-calls", (event as ChatStreamEvent.Finish).finishReason)
-    }
-
-    @Test
-    fun `finish with null userId`() {
-        val data = """{
-            "type": "finish",
-            "finishReason": "stop",
-            "messageMetadata": {
-                "messageId": "m1", "userMessageId": "u1", "conversationId": "c1",
-                "userId": null, "usage": {"credits": 0.5}
-            }
-        }"""
-        val event = SseParser.parse(null, data) as ChatStreamEvent.Finish
-        assertNull(event.messageMetadata!!.userId)
     }
 
     // ── message-metadata ─────────────────────────────────────────────

@@ -19,7 +19,6 @@ object TestFixtures {
             "metadata": {
                 "userMessageId": "umsg-001",
                 "conversationId": "conv-001",
-                "userId": null,
                 "finishReason": "stop",
                 "usage": {"credits": 0.5}
             }

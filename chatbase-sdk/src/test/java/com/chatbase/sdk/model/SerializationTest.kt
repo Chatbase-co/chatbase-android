@@ -22,7 +22,6 @@ class SerializationTest {
                 "messageId": "msg-1",
                 "userMessageId": "umsg-1",
                 "conversationId": "conv-1",
-                "userId": "user-1",
                 "finishReason": "stop",
                 "usage": {"credits": 1.5}
             }
@@ -34,7 +33,6 @@ class SerializationTest {
         assertEquals("msg-1", response.metadata.messageId)
         assertEquals("umsg-1", response.metadata.userMessageId)
         assertEquals("conv-1", response.metadata.conversationId)
-        assertEquals("user-1", response.metadata.userId)
         assertEquals(FinishReason.STOP, response.metadata.finishReason)
         assertEquals(1.5, response.metadata.usage!!.credits, 0.001)
     }
@@ -48,7 +46,6 @@ class SerializationTest {
             "metadata": {}
         }"""
         val response = chatbaseJson.decodeFromString<ChatResponse>(json)
-        assertNull(response.metadata.userId)
         assertEquals(FinishReason.UNKNOWN, response.metadata.finishReason)
         assertNull(response.metadata.usage)
     }
@@ -191,7 +188,6 @@ class SerializationTest {
         val obj = chatbaseJson.parseToJsonElement(json).jsonObject
         assertEquals("hi", obj["message"]!!.jsonPrimitive.content)
         assertTrue(obj.containsKey("stream"))
-        assertFalse(obj.containsKey("userId"))
         assertFalse(obj.containsKey("anonymousId"))
     }
 

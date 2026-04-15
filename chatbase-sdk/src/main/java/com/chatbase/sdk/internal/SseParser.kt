@@ -118,7 +118,6 @@ internal object SseParser {
             messageId = obj["messageId"]?.jsonPrimitive?.content,
             userMessageId = obj["userMessageId"]?.jsonPrimitive?.content,
             conversationId = obj["conversationId"]?.jsonPrimitive?.content,
-            userId = obj["userId"]?.let { if (it is JsonNull) null else it.jsonPrimitive.content },
             usage = obj["usage"]?.jsonObject?.let { usage ->
                 StreamUsage(credits = usage["credits"]?.jsonPrimitive?.double ?: 0.0)
             }

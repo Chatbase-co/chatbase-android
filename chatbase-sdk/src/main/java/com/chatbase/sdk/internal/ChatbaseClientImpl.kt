@@ -46,6 +46,7 @@ internal class ChatbaseClientImpl(
 
     override fun logout() {
         identityManager.clearIdentity()
+        conversationState.clear()
     }
 
     // -- Conversation state --
@@ -358,7 +359,6 @@ internal class ChatbaseClientImpl(
                             messageId = meta.messageId,
                             userMessageId = meta.userMessageId,
                             conversationId = meta.conversationId,
-                            userId = meta.userId,
                             finishReason = finishReason,
                             usage = meta.usage?.let { Usage(it.credits) }
                         )
@@ -370,7 +370,6 @@ internal class ChatbaseClientImpl(
                         messageId = meta.messageId,
                         userMessageId = meta.userMessageId,
                         conversationId = meta.conversationId,
-                        userId = meta.userId,
                         finishReason = finishReason,
                         usage = meta.usage?.let { Usage(it.credits) }
                     )
