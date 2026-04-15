@@ -11,7 +11,7 @@ abstract class BaseE2eTest {
     companion object {
         // E2E tests require these to be set in the test code or via test properties
         val agentId: String = "YOUR_AGENT_ID"
-        val baseUrl: String = "https://www.chatbase.co/api/sdk/agents"
+        val baseUrl: String = "https://www.chatbase.co"
         val testDeviceId: String = "e2e-test-device-${System.currentTimeMillis()}"
 
         @JvmStatic

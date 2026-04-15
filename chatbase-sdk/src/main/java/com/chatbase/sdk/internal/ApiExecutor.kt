@@ -57,7 +57,7 @@ internal class ApiExecutor(
     private fun buildUrl(path: String): HttpUrl.Builder {
         val basePath = parsedBaseUrl.encodedPath.trimEnd('/')
         return parsedBaseUrl.newBuilder()
-            .encodedPath("$basePath/$agentId$path")
+            .encodedPath("$basePath/api/sdk/agents/$agentId$path")
     }
 
     companion object {

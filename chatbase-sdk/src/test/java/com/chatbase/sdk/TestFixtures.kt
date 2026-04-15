@@ -108,7 +108,7 @@ fun MockWebServer.enqueueSse(vararg events: String) {
 }
 
 fun createTestClient(server: MockWebServer): ChatbaseClient {
-    val baseUrl = server.url("/api/sdk/agents").toString().removeSuffix("/")
+    val baseUrl = server.url("/").toString().removeSuffix("/")
     val config = ChatbaseConfig(
         agentId = TestFixtures.TEST_AGENT_ID,
         baseUrl = baseUrl

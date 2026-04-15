@@ -21,7 +21,7 @@ class ApiExecutorTest {
     fun setUp() {
         server = MockWebServer()
         server.start()
-        val baseUrl = server.url("/api/sdk/agents").toString().removeSuffix("/")
+        val baseUrl = server.url("/").toString().removeSuffix("/")
         executor = ApiExecutor(OkHttpClient(), baseUrl, "test-agent")
     }
 
@@ -109,7 +109,7 @@ class ApiExecutorTest {
     fun `executeRequest network failure throws NetworkException`() = runBlocking {
         val closedServer = MockWebServer()
         closedServer.start()
-        val url = closedServer.url("/api/sdk/agents").toString().removeSuffix("/")
+        val url = closedServer.url("/").toString().removeSuffix("/")
         closedServer.shutdown()
 
         val offlineExecutor = ApiExecutor(OkHttpClient(), url, "test-agent")

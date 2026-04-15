@@ -27,7 +27,7 @@ Or configure timeouts and a custom base URL:
 ```kotlin
 val client = Chatbase.create(context) {
     agentId = "your-agent-id"
-    baseUrl = "https://www.chatbase.co/api/sdk/agents"  // default
+    baseUrl = "https://www.chatbase.co"  // default
     connectTimeoutMs = 10_000                            // default
     readTimeoutMs = 30_000                               // default
 }
@@ -76,31 +76,31 @@ client.newConversation()
 Register tools that run locally when the agent invokes them. The SDK calls your handler, sends the result back to the agent, and continues streaming — all within a single `sendMessage` call.
 
 ```kotlin
-client.tool("get_spell_damage") { input ->
-    val spell = input["spell"] as String
-    val damage = (5000..10000).random()
-    mapOf("spell" to spell, "damage" to damage)
+client.tool("get_user_info") { input ->
+    val userId = input["user_id"] as String
+    val user = userRepository.getUser(userId)
+    mapOf(
+        "name" to user.name,
+        "email" to user.email,
+        "plan" to user.plan
+    )
 }
 ```
 
-Tool handlers are `suspend` functions, so they can show UI and wait for user input:
+Tool handlers are `suspend` functions, so you can call your own APIs or wait for user input:
 
 ```kotlin
-client.tool("get_spell_damage") { _ ->
-    // Suspend until the user picks a spell from a dialog
-    val deferred = CompletableDeferred<String>()
-    spellPickerRequest.value = deferred
-    val spell = deferred.await()
-
-    val damage = (5000..10000).random()
-    mapOf("spell" to spell, "damage" to damage)
+client.tool("get_order_status") { input ->
+    val orderId = input["order_id"] as String
+    val order = api.fetchOrder(orderId)
+    mapOf("status" to order.status, "eta" to order.estimatedDelivery)
 }
 ```
 
 Track tool execution via callbacks:
 
 ```kotlin
-client.sendMessage("Cast a spell!") {
+client.sendMessage("What's the status of my last order?") {
     onToolCall { tool -> println("Calling ${tool.toolName}") }
     onToolResult { result -> println("Got: ${result.outputAsString()}") }
 }
