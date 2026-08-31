@@ -34,7 +34,7 @@ class ChatbaseClientImplTest {
         server.enqueueJson(TestFixtures.PAGINATED_CONVERSATIONS_JSON)
         client.listConversations()
         val recorded = server.takeRequest()
-        assertEquals("Chatbase-Android-SDK/1.0.0", recorded.getHeader("User-Agent"))
+        assertEquals("Chatbase-Android-SDK/${BuildConfig.SDK_VERSION}", recorded.getHeader("User-Agent"))
     }
 
     @Test
