@@ -326,8 +326,15 @@ class ConversationState(
      */
     private fun finalizeCancelledTurn() {
         _state.update { s ->
-            val msgs = s.messages.map { msg ->
-                if (msg.id in currentTurnIds) msg.copy(isStreaming = false) else msg
+if (msg.id in currentTurnIds) {
+                    val content = msg.content
+                    msg.copy(
+                        isStreaming = false,
+                        content = if (content is UiMessageContent.ToolCall) {
+                            content.copy(isExecuting = false)
+                        } else content
+                    )
+                } else msg
             }.filter { msg ->
                 val content = msg.content
                 !(content is UiMessageContent.Text && content.text.isEmpty() && !msg.isStreaming && !msg.isError)
