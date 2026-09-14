@@ -28,7 +28,7 @@ internal class ChatbaseClientImpl(
     private val identityManager = IdentityManager(anonymousIdProvider)
     private val conversationState = ConversationIdHolder()
     private val toolRegistry = ToolRegistry()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val clientJob = SupervisorJob()
 
     private val httpClient: OkHttpClient = HttpClientFactory.create(config, identityManager)
     private val sseClient: OkHttpClient = HttpClientFactory.createForSse(config, identityManager)
@@ -66,7 +66,7 @@ internal class ChatbaseClientImpl(
     ): ChatResponse {
         val cb = StreamCallbacks().apply(callbacks)
         val effectiveConversationId = conversationId ?: conversationState.conversationId
-        return withContext(scope.coroutineContext) {
+        return withClientLifecycle {
             executeWithToolLoop(
                 path = "/chat",
                 buildRequestBody = { msg, convId ->
@@ -106,7 +106,7 @@ internal class ChatbaseClientImpl(
         callbacks: StreamCallbacks.() -> Unit
     ): ChatResponse {
         val cb = StreamCallbacks().apply(callbacks)
-        return withContext(scope.coroutineContext) {
+        return withClientLifecycle {
             executeWithToolLoop(
                 path = "/conversations/$conversationId/retry",
                 buildRequestBody = { _, _ ->
@@ -205,7 +205,7 @@ internal class ChatbaseClientImpl(
     // -- Lifecycle --
 
     override fun close() {
-        scope.cancel()
+        clientJob.cancel()
         httpClient.dispatcher.executorService.shutdown()
         httpClient.connectionPool.evictAll()
         sseClient.dispatcher.executorService.shutdown()
@@ -299,6 +299,24 @@ internal class ChatbaseClientImpl(
 
         throw ChatbaseException("Tool loop exceeded maximum iterations ($MAX_TOOL_LOOP_ITERATIONS)")
     }
+
+    /**
+     * Runs [block] on [Dispatchers.IO] as a child of the calling coroutine, so cancelling the
+     * caller (for example a `viewModelScope`) cancels the stream and any tool loop in progress.
+     * The block is also cancelled when the client is [close]d.
+     */
+    private suspend fun <T> withClientLifecycle(block: suspend CoroutineScope.() -> T): T =
+        withContext(Dispatchers.IO) {
+            val job = coroutineContext.job
+            val onClose = clientJob.invokeOnCompletion { cause ->
+                job.cancel(CancellationException("ChatbaseClient was closed", cause))
+            }
+            try {
+                block()
+            } finally {
+                onClose.dispose()
+            }
+        }
 
     /** Invoke a callback on [Dispatchers.Main] so consumers can safely update UI state. */
     private suspend inline fun <T> invokeOnMain(noinline callback: ((T) -> Unit)?, value: T) {
