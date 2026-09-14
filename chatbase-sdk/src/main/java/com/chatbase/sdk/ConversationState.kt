@@ -2,6 +2,7 @@ package com.chatbase.sdk
 
 import com.chatbase.sdk.exception.ChatbaseException
 import com.chatbase.sdk.model.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -214,6 +215,9 @@ class ConversationState(
             }
 
             finalizeResponse(response)
+        } catch (e: CancellationException) {
+            finalizeCancelledTurn()
+            throw e
         } catch (e: Exception) {
             markLastTurnAsError(e.message ?: "Unknown error")
         }
@@ -258,6 +262,9 @@ class ConversationState(
             }
 
             finalizeResponse(response)
+        } catch (e: CancellationException) {
+            finalizeCancelledTurn()
+            throw e
         } catch (e: Exception) {
             markLastTurnAsError("Retry failed: ${e.message}")
         }
@@ -307,6 +314,23 @@ class ConversationState(
                     isError = true,
                     content = UiMessageContent.Text("Error: $errorMessage")
                 )
+            }
+            s.copy(messages = msgs, isSending = false)
+        }
+    }
+
+    /**
+     * Called when the caller is cancelled mid-stream (the screen was left, or the user stopped
+     * generation). Keeps the text that has already arrived, clears the streaming flags and
+     * drops the placeholder if nothing arrived.
+     */
+    private fun finalizeCancelledTurn() {
+        _state.update { s ->
+            val msgs = s.messages.map { msg ->
+                if (msg.id in currentTurnIds) msg.copy(isStreaming = false) else msg
+            }.filter { msg ->
+                val content = msg.content
+                !(content is UiMessageContent.Text && content.text.isEmpty() && !msg.isStreaming && !msg.isError)
             }
             s.copy(messages = msgs, isSending = false)
         }

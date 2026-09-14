@@ -3,15 +3,21 @@ package com.chatbase.sdk
 import com.chatbase.sdk.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import java.util.concurrent.TimeUnit
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ConversationStateTest {
@@ -321,6 +327,45 @@ class ConversationStateTest {
         assertEquals("search", content.toolName)
         assertFalse(content.isExecuting)
     }
+
+    // ── Cancellation ─────────────────────────────────────────────────
+
+    @Test
+    fun `cancelled sendMessage keeps partial text and clears isSending`() = runBlocking {
+        val events = listOf(SSE_TEXT_START) +
+            (1..50).map { """{"type":"text-delta","delta":"$it,"}""" } +
+            SSE_FINISH_STOP
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(events.joinToString("") { "data: $it\n\n" } + "data: [DONE]\n\n")
+                .throttleBody(64, 200, TimeUnit.MILLISECONDS) // trickles in over several seconds
+        )
+
+        val job = launch(Dispatchers.Default) { conversation.sendMessage("Hi") }
+
+        // Wait until some text has streamed in, then cancel like a leaving screen would
+        withTimeout(5_000) {
+            while (assistantText().isEmpty()) delay(20)
+        }
+        job.cancelAndJoin()
+
+        val state = conversation.state.value
+        assertFalse(state.isSending)
+        assertNull(state.error)
+        assertEquals(2, state.messages.size)
+        val assistant = state.messages[1]
+        assertEquals(Role.ASSISTANT, assistant.role)
+        assertFalse(assistant.isStreaming)
+        assertFalse(assistant.isError)
+        assertTrue((assistant.content as UiMessageContent.Text).text.isNotEmpty())
+    }
+
+    private fun assistantText(): String =
+        conversation.state.value.messages
+            .lastOrNull { it.role == Role.ASSISTANT }
+            ?.let { (it.content as? UiMessageContent.Text)?.text }
+            ?: ""
 
     // ── SSE fixtures ─────────────────────────────────────────────────
 
