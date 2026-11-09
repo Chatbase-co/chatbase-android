@@ -34,3 +34,5 @@ Thumbs.db
 *.jks
 *.keystore
 signing.properties
+# IDE run configs that carry env vars (API keys, agent IDs)
+.idea/runConfigurations/E2E_Tests.xml
